@@ -39,7 +39,7 @@ export default function Kline({ goRecord }: { goRecord: (date: string) => void }
     <div className="space-y-4">
       <header>
         <h1 className="text-[26px] font-bold">人生K线</h1>
-        <p className="muted text-sm mt-1">按单个维度看，不合成总分。四值齐全才画蜡烛；只有晨/晚状态时只画一个点；没记录就留空。</p>
+        <p className="muted text-sm mt-1">看你每天点的数字怎么变。记得细的日子是一根小蜡烛，只点了「今晚整体」的日子是一个圆点，没记的日子空着——都正常，不用补。</p>
       </header>
 
       <div className="flex gap-1.5 overflow-x-auto pb-1" data-testid="dim-chips">

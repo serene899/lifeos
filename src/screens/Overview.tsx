@@ -30,6 +30,16 @@ export default function Overview({ goRecord, goKline }: { goRecord: (date: strin
         <p className="muted text-sm mt-1">记录真实人生，而不是评判人生。{prettyDay(today)}</p>
       </header>
 
+      <section className="card" data-testid="guide-card">
+        <h2 className="font-semibold mb-2">怎么用？每天就三步，不到一分钟</h2>
+        <ol className="text-sm space-y-1.5 list-none">
+          <li><b>1.</b> 点下面的「记录今天」</li>
+          <li><b>2.</b> 六个方面各点一个数字——今晚回想，这一项今天整体怎么样（1 最差，5 最好），凭感觉点，不用纠结</li>
+          <li><b>3.</b> 写一句话今天发生了什么，点保存，完成</li>
+        </ol>
+        <p className="muted text-xs mt-2">就这些。K线页是攒了一阵子之后回头看的，现在不用研究；早上状态、最好/最差那些细项都是可选的，想记再记。</p>
+      </section>
+
       <section className="card" data-testid="today-card">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">今天</h2>

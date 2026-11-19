@@ -7,7 +7,7 @@ import { validateDimState } from '../lib/kline';
 function LevelPicker({ label, value, onChange, testid }: { label: string; value?: Level; onChange: (v?: Level) => void; testid: string }) {
   return (
     <div className="flex items-center justify-between py-1">
-      <span className="text-sm w-14 shrink-0">{label}</span>
+      <span className="text-sm w-24 shrink-0">{label}</span>
       <div className="flex gap-1.5" role="radiogroup" aria-label={label} data-testid={testid}>
         {[1, 2, 3, 4, 5].map((n) => (
           <button
@@ -31,13 +31,22 @@ export default function Record({ date, onDateChange }: { date: string; onDateCha
   const [msg, setMsg] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [anchorOpen, setAnchorOpen] = useState(false);
+  // 快速模式是默认：每维只点「今晚整体」一个数。晨/最好/最差/事实收在「记更细」里，按需展开。
+  const [detailed, setDetailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
     setLoaded(false);
     getDay(date).then((d) => {
       if (!alive) return;
-      setRec(d ?? emptyDay(date, Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'));
+      const rec0 = d ?? emptyDay(date, Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai');
+      setRec(rec0);
+      // 已有详细数据的日子自动展开，免得用户以为数据丢了
+      const hasDetail =
+        Object.values(rec0.dims).some((s) => s && (s.morning !== undefined || s.best !== undefined || s.worst !== undefined)) ||
+        Object.values(rec0.facts).some((v) => v !== undefined) ||
+        !!rec0.bestMoment || !!rec0.worstMoment;
+      setDetailed(hasDetail);
       setLoaded(true);
       setMsg('');
       setErrors([]);
@@ -90,26 +99,41 @@ export default function Record({ date, onDateChange }: { date: string; onDateCha
           <input type="date" className="input !w-auto" value={date} max={todayKey()} onChange={(e) => e.target.value && onDateChange(e.target.value)} data-testid="date-input" />
           <span className="muted text-sm">{prettyDay(date)}{!isToday ? ' · 补记' : ''}</span>
         </div>
-        <p className="muted text-sm mt-2">每一项都可以不填。没填就是没记录，不会按 0 分算，也不会替你编。</p>
+        <p className="muted text-sm mt-2">
+          <b className="text-[rgb(var(--c-ink))]">每天只要做两件事：</b>下面六项各点一个数（今晚回想一下，这一项今天整体怎么样，1 最差、5 最好），
+          再往下写一句话今天发生了什么，点保存就完事。其他的都不用管。
+        </p>
       </header>
 
       {DIM_KEYS.map((k) => {
         const s = rec.dims[k] ?? {};
         return (
-          <section key={k} className="card" data-testid={`dim-${k}`}>
+          <section key={k} className="card !py-3" data-testid={`dim-${k}`}>
             <div className="flex items-baseline justify-between">
               <h2 className="font-semibold">{DIM_LABEL[k]}</h2>
               <span className="muted text-[11px] text-right ml-2">{DIM_HINT[k]}</span>
             </div>
-            <div className="mt-1.5">
-              <LevelPicker label="晨 · 开" testid={`${k}-morning`} value={s.morning} onChange={(v) => setDim(k, { morning: v })} />
-              <LevelPicker label="晚 · 收" testid={`${k}-evening`} value={s.evening} onChange={(v) => setDim(k, { evening: v })} />
-              <LevelPicker label="最好" testid={`${k}-best`} value={s.best} onChange={(v) => setDim(k, { best: v })} />
-              <LevelPicker label="最差" testid={`${k}-worst`} value={s.worst} onChange={(v) => setDim(k, { worst: v })} />
+            <div className="mt-1">
+              <LevelPicker label="今晚整体" testid={`${k}-evening`} value={s.evening} onChange={(v) => setDim(k, { evening: v })} />
+              {detailed && (
+                <>
+                  <LevelPicker label="早上醒来时" testid={`${k}-morning`} value={s.morning} onChange={(v) => setDim(k, { morning: v })} />
+                  <LevelPicker label="今天最好时" testid={`${k}-best`} value={s.best} onChange={(v) => setDim(k, { best: v })} />
+                  <LevelPicker label="今天最差时" testid={`${k}-worst`} value={s.worst} onChange={(v) => setDim(k, { worst: v })} />
+                </>
+              )}
             </div>
           </section>
         );
       })}
+
+      <button
+        className="btn-ghost w-full"
+        data-testid="toggle-detail"
+        onClick={() => setDetailed(!detailed)}
+      >
+        {detailed ? '收起详细记录' : '记更细一点（可选）：早上状态、今天最好/最差、睡眠和支出'}
+      </button>
 
       <button className="muted text-sm underline" onClick={() => setAnchorOpen(!anchorOpen)}>1~5 分是什么意思？（候选锚点）</button>
       {anchorOpen && (
@@ -121,6 +145,7 @@ export default function Record({ date, onDateChange }: { date: string; onDateCha
         </section>
       )}
 
+      {detailed && (
       <section className="card">
         <h2 className="font-semibold mb-1">事实（只有这四项是正式事实）</h2>
         <p className="muted text-xs mb-3">运动分钟、餐食次数、资产、模拟盈亏不进事实层，也不会换算成分数——想记可以写进下面的故事里。</p>
@@ -140,17 +165,22 @@ export default function Record({ date, onDateChange }: { date: string; onDateCha
           ))}
         </div>
       </section>
+      )}
 
       <section className="card space-y-3">
         <h2 className="font-semibold">今天的故事</h2>
-        <label className="block">
-          <span className="text-sm muted">最好时刻发生了什么</span>
-          <textarea className="input mt-1" data-testid="best-moment" value={rec.bestMoment ?? ''} onChange={(e) => setRec({ ...rec, bestMoment: e.target.value || undefined })} placeholder="对应「最好」的那一刻" />
-        </label>
-        <label className="block">
-          <span className="text-sm muted">最差时刻发生了什么</span>
-          <textarea className="input mt-1" data-testid="worst-moment" value={rec.worstMoment ?? ''} onChange={(e) => setRec({ ...rec, worstMoment: e.target.value || undefined })} placeholder="对应「最差」的那一刻" />
-        </label>
+        {detailed && (
+          <>
+            <label className="block">
+              <span className="text-sm muted">最好时刻发生了什么</span>
+              <textarea className="input mt-1" data-testid="best-moment" value={rec.bestMoment ?? ''} onChange={(e) => setRec({ ...rec, bestMoment: e.target.value || undefined })} placeholder="对应「今天最好时」的那一刻" />
+            </label>
+            <label className="block">
+              <span className="text-sm muted">最差时刻发生了什么</span>
+              <textarea className="input mt-1" data-testid="worst-moment" value={rec.worstMoment ?? ''} onChange={(e) => setRec({ ...rec, worstMoment: e.target.value || undefined })} placeholder="对应「今天最差时」的那一刻" />
+            </label>
+          </>
+        )}
         <label className="block">
           <span className="text-sm muted">今天的故事 / 最重要的一件事</span>
           <textarea className="input mt-1" data-testid="story" value={rec.story ?? ''} onChange={(e) => setRec({ ...rec, story: e.target.value || undefined })} placeholder="用自己的话记下来，多年后点开K线先看到的是它" />

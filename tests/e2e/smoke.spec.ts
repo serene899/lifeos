@@ -16,7 +16,13 @@ test.beforeEach(async ({ page }) => {
 
 test('记录一天 → 刷新后仍在 → K线出现蜡烛 → 时间轴与历史可见', async ({ page }) => {
   await expect(page.getByTestId('today-card')).toBeVisible();
+  await expect(page.getByTestId('guide-card')).toContainText('每天就三步');
   await page.getByTestId('tab-record').click();
+
+  // 快速模式默认：只有「今晚整体」，晨/最好/最差不可见
+  await expect(page.getByTestId('health-evening')).toBeVisible();
+  await expect(page.getByTestId('health-morning')).toHaveCount(0);
+  await page.getByTestId('toggle-detail').click();
 
   // 健康维度填齐四值：晨3 晚4 最好5 最差2
   const pick = async (tid: string, n: number) => {
@@ -53,8 +59,9 @@ test('只有晚间值的一天只画点不画蜡烛；约束错误被表单拦�
   const pick = async (tid: string, n: number) => {
     await page.getByTestId(tid).getByRole('radio').nth(n - 1).click();
   };
-  // 先制造约束错误：晚4、最好3 → 保存应被拦
+  // 先制造约束错误：晚4、最好3 → 保存应被拦（最好在「记更细」里）
   await pick('emotion-evening', 4);
+  await page.getByTestId('toggle-detail').click();
   await pick('emotion-best', 3);
   await page.getByTestId('save-btn').click();
   await expect(page.getByTestId('form-errors')).toContainText('最好状态不能低于晚间状态');
