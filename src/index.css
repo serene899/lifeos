@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+  -webkit-tap-highlight-color: transparent;
+  --c-paper: 242 242 247;
+  --c-ink: 28 28 30;
+  --c-card: 255 255 255;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-paper: 0 0 0;
+    --c-ink: 242 242 247;
+    --c-card: 28 28 30;
+  }
+}
+html, body, #root { height: 100%; }
+html { background: rgb(var(--c-paper)); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  color: rgb(var(--c-ink));
+  background: rgb(var(--c-paper));
+}
+.card {
+  background: rgb(var(--c-card));
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+.btn-primary {
+  background: #007aff; color: #fff; border-radius: 12px;
+  padding: 10px 16px; font-weight: 600; font-size: 15px;
+}
+.btn-primary:disabled { opacity: 0.45; }
+.btn-ghost {
+  border-radius: 12px; padding: 9px 14px; font-size: 14px;
+  background: rgb(var(--c-ink) / 0.06); color: rgb(var(--c-ink));
+}
+.btn-danger { color: #ff3b30; }
+.input {
+  width: 100%; border-radius: 10px; padding: 9px 11px; font-size: 15px;
+  background: rgb(var(--c-ink) / 0.05); color: rgb(var(--c-ink));
+  border: 1px solid transparent; outline: none;
+}
+.input:focus { border-color: #007aff; }
+textarea.input { min-height: 64px; resize: vertical; }
+.muted { color: rgb(var(--c-ink) / 0.55); }
+.chip {
+  border-radius: 999px; padding: 6px 12px; font-size: 13px;
+  background: rgb(var(--c-ink) / 0.06); white-space: nowrap;
+}
+.chip-on { background: #007aff; color: #fff; }
+.seg {
+  width: 34px; height: 34px; border-radius: 9px; font-size: 14px;
+  background: rgb(var(--c-ink) / 0.06); color: rgb(var(--c-ink) / 0.7);
+}
+.seg-on { background: #007aff; color: #fff; font-weight: 700; }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
