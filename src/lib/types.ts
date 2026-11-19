@@ -3,7 +3,7 @@
  * 规格依据：V0.3.3 终审规格（所有者 2026-11-19 下达的 12 条规则）。
  * 核心定位：记录真实人生，而不是评判人生。
  */
-export const APP_VERSION = '0.1.1';
+export const APP_VERSION = '0.2.0';
 export const EXPORT_FORMAT = 'lifeos-export-v1' as const;
 
 /** 六个维度，且只有六个。关系与生活事件不是维度，只进时间轴（规则 2、3）。 */
@@ -54,8 +54,11 @@ export interface DimState {
 
 /**
  * 正式事实指标只有这四个（规则 8）。
- * 运动分钟、餐食次数、资产快照、模拟盈亏等不得进入正式事实层或评分（规则 9），
- * 因此本类型里根本没有那些字段。
+ * 运动分钟、餐食次数、资产快照、模拟盈亏等不得进入正式事实层（规则 9），
+ * 因此本类型里根本没有那些字段——它们只以参考值（refs）存在于汇入层 AutoDay。
+ * 注：2026-11-19 所有者明确拍板「自动打分」：汇入的事实可按试行锚点生成自动分用于呈现
+ * （见 autoscore.ts），手动分永远可覆盖自动分。此决定覆盖规则 9 中「不得进入评分」的旧口径，
+ * 仅限本 App 内部呈现；三个来源 App 的导出仍只送事实、不送分。
  */
 export interface DayFacts {
   sleepMinutes?: number;
@@ -106,6 +109,42 @@ export interface LifeEvent {
 export function emptyDay(date: string, tz: string): DayRecord {
   const now = new Date().toISOString();
   return { date, dims: {}, facts: {}, createdAt: now, updatedAt: now, tz };
+}
+
+/**
+ * 从其他 LIFEOS App（钱在哪 / 生息 / 阅迹）经 lifeos-exchange 文件汇入的一天数据。
+ * 与手动 DayRecord 分开存：汇入层提供事实与参考值，自动分由 autoscore.ts 按试行锚点现算，
+ * 不落库为「分数事实」；手动记录永远优先（手动分覆盖自动分）。
+ */
+export interface AutoDay {
+  date: string;
+  /** 正式事实（白名单四项中实际收到的部分） */
+  facts: Partial<DayFacts>;
+  /** 参考值（x- 扩展与感受层，永不冒充正式事实） */
+  refs: {
+    exerciseMinutes?: number;
+    mealCount?: number;
+    readingMinutes?: number;
+    incomeAmount?: number;
+    assetSnapshotCny?: number;
+    sleepQuality?: Level;
+    bodyState?: Level;
+    energy?: Level;
+    fatigue?: Level;
+    cultureSessions?: number;
+    cultureHasFeeling?: boolean;
+    cultureHasQuote?: boolean;
+    cultureFinished?: boolean;
+  };
+  /** 来源 App 列表（如 lifeos.shike、lifeos.money-where、lifeos.yueji） */
+  sources: string[];
+  updatedAt: string;
+}
+
+/** 自动分结果：分数 + 一句人话依据（依据必须展示，不做黑箱分） */
+export interface AutoScore {
+  score: Level;
+  basis: string;
 }
 
 export function hasAnyData(d: DayRecord): boolean {

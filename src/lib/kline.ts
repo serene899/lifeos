@@ -8,7 +8,7 @@
  * - 约束：High ≥ max(Open, Close)，Low ≤ min(Open, Close)。约束不成立的数据不修正、不编造，
  *   降级为 point 并标注 invalid，避免假精确。
  */
-import type { DayRecord, DimKey, DimState } from './types';
+import type { AutoScore, DayRecord, DimKey, DimState } from './types';
 import { addDays, daysBetween, monthEnd, monthStart, weekStart } from './time';
 
 export interface Ohlc {
@@ -20,8 +20,26 @@ export interface Ohlc {
 
 export type DayBar =
   | { kind: 'candle'; date: string; ohlc: Ohlc }
-  | { kind: 'point'; date: string; value: number; invalid?: boolean }
+  | { kind: 'point'; date: string; value: number; invalid?: boolean; auto?: AutoScore }
   | { kind: 'empty'; date: string };
+
+/**
+ * 把自动分并入日K：某天某维手动完全没记、且该天有自动分时，呈现为「自动点」（带依据）。
+ * 手动只要记了任何一项，自动分就不出现——手动永远优先（所有者 2026-11-19 拍板）。
+ * 周/月聚合不并自动分：聚合口径只认手动 OHLC，避免两种口径混进一根蜡烛。
+ */
+export function mergeAutoPoints(
+  bars: (DayBar | PeriodBar)[],
+  autoScores: Map<string, Partial<Record<DimKey, AutoScore>>>,
+  dim: DimKey,
+): (DayBar | PeriodBar)[] {
+  return bars.map((b) => {
+    if (!('date' in b) || b.kind !== 'empty') return b;
+    const auto = autoScores.get(b.date)?.[dim];
+    if (!auto) return b;
+    return { kind: 'point', date: b.date, value: auto.score, auto } satisfies DayBar;
+  });
+}
 
 function isValidOhlc(s: DimState): Ohlc | null {
   if (s.morning === undefined || s.evening === undefined || s.best === undefined || s.worst === undefined) return null;

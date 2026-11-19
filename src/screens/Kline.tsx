@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { DIM_KEYS, DIM_LABEL, type DimKey } from '../lib/types';
-import { buildSeries, type DayBar, type Period, type PeriodBar } from '../lib/kline';
+import { buildSeries, mergeAutoPoints, type DayBar, type Period, type PeriodBar } from '../lib/kline';
+import { computeAutoScores } from '../lib/autoscore';
 import { addDays, monthStart, todayKey, weekStart } from '../lib/time';
 
 const UP = '#ef4444';
@@ -14,6 +15,7 @@ function isPeriodBar(b: DayBar | PeriodBar): b is PeriodBar {
 
 export default function Kline({ goRecord }: { goRecord: (date: string) => void }) {
   const days = useLiveQuery(() => db.days.toArray(), [], []);
+  const autoDays = useLiveQuery(() => db.autoDays.toArray(), [], []);
   const events = useLiveQuery(() => db.events.toArray(), [], []);
   const [dim, setDim] = useState<DimKey>('health');
   const [period, setPeriod] = useState<Period>('day');
@@ -25,7 +27,11 @@ export default function Kline({ goRecord }: { goRecord: (date: string) => void }
     return { from: monthStart(addDays(monthStart(today), -30 * 5)), to: today };
   }, [period, today]);
 
-  const bars = useMemo(() => buildSeries(days ?? [], dim, period, from, to), [days, dim, period, from, to]);
+  const autoScores = useMemo(() => computeAutoScores(autoDays ?? []), [autoDays]);
+  const bars = useMemo(() => {
+    const raw = buildSeries(days ?? [], dim, period, from, to);
+    return period === 'day' ? mergeAutoPoints(raw, autoScores, dim) : raw;
+  }, [days, autoScores, dim, period, from, to]);
 
   const W = 340, H = 190, PADL = 22, PADB = 18, PADT = 8;
   const plotW = W - PADL - 6, plotH = H - PADT - PADB;
@@ -79,6 +85,10 @@ export default function Kline({ goRecord }: { goRecord: (date: string) => void }
             }
             const v = b.kind === 'point' ? b.value : undefined;
             if (v === undefined) return null;
+            if (!isPeriodBar(b) && 'auto' in b && b.auto) {
+              const s = 4.2;
+              return <polygon key={i} data-testid="auto-point" points={`${cx(i)},${y(v) - s} ${cx(i) + s},${y(v)} ${cx(i)},${y(v) + s} ${cx(i) - s},${y(v)}`} fill="#f59e0b" stroke="none" />;
+            }
             return <circle key={i} data-testid="point" cx={cx(i)} cy={y(v)} r={3.2} fill="none" stroke="#007aff" strokeWidth={1.8} />;
           })}
           {bars.map((b, i) => {
@@ -87,7 +97,7 @@ export default function Kline({ goRecord }: { goRecord: (date: string) => void }
             return <text key={`t${i}`} x={cx(i)} y={H - 4} fontSize={8.5} textAnchor="middle" fill="currentColor" opacity={0.5}>{label}</text>;
           })}
         </svg>
-        <p className="muted text-[11px] mt-1">颜色只表示晚间相对晨间的方向（红=晚间更高，绿=晚间更低），不代表这一天过得好或不好。圆点 = 只有部分状态，不画蜡烛。</p>
+        <p className="muted text-[11px] mt-1">颜色只表示晚间相对晨间的方向（红=晚间更高，绿=晚间更低），不代表这一天过得好或不好。圆点 = 你自己记的；橙色菱形 = 自动分（其他 App 的数据算出来的，试行标准，你手记了就以你的为准）。</p>
       </section>
 
       <section className="space-y-2" data-testid="kline-list">
@@ -118,6 +128,7 @@ export default function Kline({ goRecord }: { goRecord: (date: string) => void }
                 <span className="font-medium">{b.date}</span>
                 <span className="muted">
                   {b.kind === 'candle' ? `开 ${b.ohlc.open} · 高 ${b.ohlc.high} · 低 ${b.ohlc.low} · 收 ${b.ohlc.close}` :
+                    b.kind === 'point' && 'auto' in b && b.auto ? <span className="text-amber-600 dark:text-amber-400">自动分 {b.value} · {b.auto.basis}</span> :
                     b.kind === 'point' ? `只有点位 ${b.value}${'invalid' in b && b.invalid ? '（四值约束不成立，未画蜡烛）' : '（不画蜡烛）'}` : day ? '该维无记录' : '无记录'}
                 </span>
               </div>

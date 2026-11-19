@@ -16,7 +16,7 @@ test.beforeEach(async ({ page }) => {
 
 test('记录一天 → 刷新后仍在 → K线出现蜡烛 → 时间轴与历史可见', async ({ page }) => {
   await expect(page.getByTestId('today-card')).toBeVisible();
-  await expect(page.getByTestId('guide-card')).toContainText('每天就三步');
+  await expect(page.getByTestId('guide-card')).toContainText('大部分数据自己会来');
   await page.getByTestId('tab-record').click();
 
   // 快速模式默认：只有「今晚整体」，晨/最好/最差不可见
@@ -74,6 +74,39 @@ test('只有晚间值的一天只画点不画蜡烛；约束错误被表单拦�
   await expect(page.getByTestId('point').first()).toBeVisible();
   await expect(page.getByTestId('candle')).toHaveCount(0);
   await expect(page.getByTestId('kline-list')).toContainText('只有点位 4');
+});
+
+test('收数据：导入生息交换文件 → 健康维度出现自动分（菱形）与依据', async ({ page }) => {
+  await page.goto('./');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+
+  const today = new Date();
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const t = fmt(today);
+  const exchange = {
+    manifest: { format: 'lifeos-exchange', protocolVersion: '0.1.2', sourceApp: 'lifeos.shike', synthetic: false, scoringPolicy: 'facts-never-produce-scores' },
+    records: [
+      {
+        sourceRecordId: 'sleep-1', sourceApp: 'lifeos.shike', op: 'write', layer: 'fact',
+        occurredAt: `${t}T00:00:00Z`, tz: 'Asia/Shanghai', sourceUpdatedAt: `${t}T01:00:00Z`,
+        data: { metricKey: 'sleepMinutes', value: 450, unit: 'min', attributes: { localDate: t } },
+      },
+    ],
+  };
+  await page.getByTestId('tab-data').click();
+  await page.getByTestId('exchange-file').setInputFiles({
+    name: 'lifeos-exchange_shike.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exchange)),
+  });
+  await expect(page.getByTestId('exchange-preview')).toContainText('生息');
+  await page.getByTestId('exchange-apply').click();
+  await expect(page.getByTestId('data-msg')).toContainText('已收下');
+
+  await page.getByTestId('tab-kline').click();
+  await page.getByTestId('dim-chips').getByRole('button', { name: '健康' }).click();
+  await expect(page.getByTestId('auto-point').first()).toBeVisible();
+  await expect(page.getByTestId('kline-list')).toContainText('自动分 4');
+  await expect(page.getByTestId('kline-list')).toContainText('睡眠 7小时30分');
 });
 
 test('事件增删 + 导出文件为 lifeos-export-v1 + 示例数据', async ({ page }) => {

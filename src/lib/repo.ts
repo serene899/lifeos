@@ -1,5 +1,5 @@
 import { db } from './db';
-import type { DayRecord, LifeEvent } from './types';
+import type { AutoDay, DayRecord, LifeEvent } from './types';
 import { deviceTz, nowUtc, todayKey, uuid } from './time';
 import type { ExportFile } from './exporter';
 
@@ -65,10 +65,42 @@ export async function applyImport(file: ExportFile, mode: 'merge' | 'overwrite')
 }
 
 export async function clearAll(): Promise<void> {
-  await db.transaction('rw', db.days, db.events, async () => {
+  await db.transaction('rw', db.days, db.events, db.autoDays, async () => {
     await db.days.clear();
     await db.events.clear();
+    await db.autoDays.clear();
   });
+}
+
+/* ---------- 汇入层（其他 App 的交换数据） ---------- */
+
+export async function allAutoDays(): Promise<AutoDay[]> {
+  return (await db.autoDays.toArray()).sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+export async function getAutoDay(date: string): Promise<AutoDay | undefined> {
+  return db.autoDays.get(date);
+}
+/** 合并写入汇入数据：按日期合并，新文件带来的字段覆盖旧值，未带来的保留 */
+export async function mergeAutoDays(incoming: AutoDay[]): Promise<void> {
+  await db.transaction('rw', db.autoDays, async () => {
+    for (const inc of incoming) {
+      const old = await db.autoDays.get(inc.date);
+      if (!old) {
+        await db.autoDays.put(inc);
+      } else {
+        await db.autoDays.put({
+          date: inc.date,
+          facts: { ...old.facts, ...inc.facts },
+          refs: { ...old.refs, ...inc.refs },
+          sources: [...new Set([...old.sources, ...inc.sources])],
+          updatedAt: inc.updatedAt,
+        });
+      }
+    }
+  });
+}
+export async function clearAutoDays(): Promise<void> {
+  await db.autoDays.clear();
 }
 
 export async function getMeta<T>(key: string): Promise<T | undefined> {

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ANCHOR_CANDIDATE, DIM_HINT, DIM_KEYS, DIM_LABEL, FACT_KEYS, FACT_LABEL, emptyDay, type DayRecord, type DimState, type Level } from '../lib/types';
-import { deleteDay, getDay, saveDay } from '../lib/repo';
+import { deleteDay, getAutoDay, getDay, saveDay } from '../lib/repo';
+import { fmtMinutes } from '../lib/autoscore';
+import type { AutoDay } from '../lib/types';
 import { prettyDay, todayKey } from '../lib/time';
 import { validateDimState } from '../lib/kline';
 
@@ -33,6 +35,8 @@ export default function Record({ date, onDateChange }: { date: string; onDateCha
   const [anchorOpen, setAnchorOpen] = useState(false);
   // 快速模式是默认：每维只点「今晚整体」一个数。晨/最好/最差/事实收在「记更细」里，按需展开。
   const [detailed, setDetailed] = useState(false);
+  const [auto, setAuto] = useState<AutoDay | undefined>();
+  useEffect(() => { getAutoDay(date).then(setAuto).catch(() => setAuto(undefined)); }, [date]);
 
   useEffect(() => {
     let alive = true;
@@ -103,6 +107,18 @@ export default function Record({ date, onDateChange }: { date: string; onDateCha
           <b className="text-[rgb(var(--c-ink))]">每天只要做两件事：</b>下面六项各点一个数（今晚回想一下，这一项今天整体怎么样，1 最差、5 最好），
           再往下写一句话今天发生了什么，点保存就完事。其他的都不用管。
         </p>
+        {auto && (
+          <p className="text-sm mt-2 rounded-xl bg-amber-500/10 p-2.5" data-testid="record-auto-hint">
+            <span className="text-amber-600 dark:text-amber-400 font-medium">这天已从其他 App 收到数据：</span>
+            {[
+              auto.facts.sleepMinutes !== undefined ? `睡眠 ${fmtMinutes(auto.facts.sleepMinutes)}` : null,
+              auto.facts.spendAmount !== undefined ? `支出 ¥${auto.facts.spendAmount}` : null,
+              auto.refs.readingMinutes ? `阅读 ${fmtMinutes(auto.refs.readingMinutes)}` : null,
+              auto.refs.exerciseMinutes ? `运动 ${fmtMinutes(auto.refs.exerciseMinutes)}` : null,
+            ].filter(Boolean).join(' · ') || '（见 K线 页自动分）'}
+            <span className="muted">。健康、财务、学习、精神生活已有自动分，你主要补工作和情绪就行。</span>
+          </p>
+        )}
       </header>
 
       {DIM_KEYS.map((k) => {

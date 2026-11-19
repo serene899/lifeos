@@ -3,11 +3,15 @@ import { db } from '../lib/db';
 import { DIM_KEYS, DIM_LABEL, hasAnyData } from '../lib/types';
 import { addDays, daysBetween, monthStart, prettyDay, todayKey } from '../lib/time';
 import { getMeta } from '../lib/repo';
-import { useEffect, useState } from 'react';
+import { computeAutoScores, fmtMinutes } from '../lib/autoscore';
+import { useEffect, useMemo, useState } from 'react';
 
 export default function Overview({ goRecord, goKline }: { goRecord: (date: string) => void; goKline: () => void }) {
   const days = useLiveQuery(() => db.days.toArray(), [], []);
+  const autoDays = useLiveQuery(() => db.autoDays.toArray(), [], []);
   const events = useLiveQuery(() => db.events.toArray(), [], []);
+  const autoScores = useMemo(() => computeAutoScores(autoDays ?? []), [autoDays]);
+  const autoByDate = useMemo(() => new Map((autoDays ?? []).map((a) => [a.date, a])), [autoDays]);
   const [lastExportAt, setLastExportAt] = useState<string | undefined>();
   useEffect(() => { getMeta<string>('lastExportAt').then(setLastExportAt).catch(() => undefined); }, []);
 
@@ -31,13 +35,12 @@ export default function Overview({ goRecord, goKline }: { goRecord: (date: strin
       </header>
 
       <section className="card" data-testid="guide-card">
-        <h2 className="font-semibold mb-2">怎么用？每天就三步，不到一分钟</h2>
+        <h2 className="font-semibold mb-2">怎么用？大部分数据自己会来</h2>
         <ol className="text-sm space-y-1.5 list-none">
-          <li><b>1.</b> 点下面的「记录今天」</li>
-          <li><b>2.</b> 六个方面各点一个数字——今晚回想，这一项今天整体怎么样（1 最差，5 最好），凭感觉点，不用纠结</li>
-          <li><b>3.</b> 写一句话今天发生了什么，点保存，完成</li>
+          <li><b>1.</b> 生息、钱在哪、阅迹里的数据，在「数据」页选一次交换文件收进来，图和自动分就有了</li>
+          <li><b>2.</b> 你每天只补两件机器不知道的事：工作、情绪各点一个数字，再写一句话今天发生了什么</li>
+          <li><b>3.</b> 点保存，完成。健康、财务、学习、精神生活的分都由数据自动算，你觉得不对随时改，改完以你的为准</li>
         </ol>
-        <p className="muted text-xs mt-2">就这些。K线页是攒了一阵子之后回头看的，现在不用研究；早上状态、最好/最差那些细项都是可选的，想记再记。</p>
       </section>
 
       <section className="card" data-testid="today-card">
@@ -63,6 +66,24 @@ export default function Overview({ goRecord, goKline }: { goRecord: (date: strin
         ) : (
           <p className="muted text-sm mt-2">今天还没有记录。只记一句话也算数。</p>
         )}
+        {(() => {
+          const a = autoByDate.get(today);
+          const sc = autoScores.get(today);
+          if (!a && !sc) return null;
+          const facts: string[] = [];
+          const sleep = todayRec?.facts.sleepMinutes ?? a?.facts.sleepMinutes;
+          if (sleep !== undefined) facts.push(`睡眠 ${fmtMinutes(sleep)}`);
+          const spend = todayRec?.facts.spendAmount ?? a?.facts.spendAmount;
+          if (spend !== undefined) facts.push(`支出 ¥${spend}`);
+          if (a?.refs.readingMinutes) facts.push(`阅读 ${fmtMinutes(a.refs.readingMinutes)}`);
+          return (
+            <div className="mt-3 rounded-xl bg-amber-500/10 p-2.5 text-sm" data-testid="today-auto">
+              <span className="text-amber-600 dark:text-amber-400 font-medium">已自动收到今天的数据</span>
+              {facts.length > 0 && <span className="muted"> · {facts.join(' · ')}</span>}
+              {sc && <div className="mt-1 muted text-xs">自动分：{Object.entries(sc).map(([k, v]) => `${DIM_LABEL[k as keyof typeof DIM_LABEL]} ${v!.score}`).join(' · ')}</div>}
+            </div>
+          );
+        })()}
         <div className="flex gap-1.5 mt-4" aria-label="最近7天记录情况">
           {last7.map((d) => (
             <button key={d} onClick={() => goRecord(d)} className="flex-1">
@@ -84,11 +105,19 @@ export default function Overview({ goRecord, goKline }: { goRecord: (date: strin
             });
             const s = rec?.dims[k];
             const v = s?.evening ?? s?.morning;
+            // 手动没有时，回退到最近一天的自动分（标明自动）
+            const autoEntry = v === undefined
+              ? [...autoScores.entries()].filter(([, sc]) => sc[k]).sort((a, b) => (a[0] < b[0] ? 1 : -1))[0]
+              : undefined;
             return (
               <button key={k} className="text-left rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3" onClick={goKline}>
                 <div className="text-sm font-medium">{DIM_LABEL[k]}</div>
-                <div className="text-[22px] font-bold mt-0.5">{v !== undefined ? v : '—'}</div>
-                <div className="muted text-[11px]">{rec ? `${rec.date.slice(5)} ${s?.evening !== undefined ? '晚间' : '晨间'}状态` : '还没有记录'}</div>
+                <div className="text-[22px] font-bold mt-0.5">{v !== undefined ? v : autoEntry ? autoEntry[1][k]!.score : '—'}</div>
+                <div className="muted text-[11px]">
+                  {rec ? `${rec.date.slice(5)} ${s?.evening !== undefined ? '晚间' : '晨间'}状态`
+                    : autoEntry ? `${autoEntry[0].slice(5)} 自动分 · ${autoEntry[1][k]!.basis}`
+                    : '还没有记录'}
+                </div>
               </button>
             );
           })}
