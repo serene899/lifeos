@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { APP_VERSION, EXPORT_FORMAT, hasAnyData } from '../lib/types';
-import { allDays, allEvents, applyImport, clearAll, clearAutoDays, mergeAutoDays, setMeta } from '../lib/repo';
+import { allDays, allEvents, allPeople, applyImport, clearAll, clearAutoDays, mergeAutoDays, setMeta } from '../lib/repo';
 import { buildExport, buildMarkdown, exportFileName, previewOf, validateExportFile, type ExportFile, type ImportPreview } from '../lib/exporter';
 import { parseExchange, type ExchangePreview } from '../lib/exchange';
 import { sampleData } from '../lib/sample';
@@ -59,13 +59,13 @@ export default function Data({ goRecord }: { goRecord: (date: string) => void })
   const sortedDays = [...(days ?? [])].sort((a, b) => (a.date > b.date ? -1 : 1));
 
   const onExportJson = async () => {
-    const f = await buildExport(await allDays(), await allEvents());
+    const f = await buildExport(await allDays(), await allEvents(), await allPeople());
     download(exportFileName(todayKey()), JSON.stringify(f, null, 2), 'application/json');
     await setMeta('lastExportAt', new Date().toISOString());
     setMsg(`已导出 ${f.counts.total} 条（格式 ${EXPORT_FORMAT}，含校验和）。请把文件存到你自己掌控的位置，如 iCloud 文件。`);
   };
   const onExportMd = async () => {
-    const md = buildMarkdown(await allDays(), await allEvents());
+    const md = buildMarkdown(await allDays(), await allEvents(), await allPeople());
     download(`lifeos-export-v1_${todayKey()}.md`, md, 'text/markdown');
     setMsg('已导出可读版 Markdown。即使将来系统失效，这份文件人也能直接读。');
   };
@@ -85,7 +85,7 @@ export default function Data({ goRecord }: { goRecord: (date: string) => void })
     if (!pending) return;
     if (mode === 'overwrite') {
       // 覆盖前自动导出当前数据留底，避免误操作无可挽回
-      const cur = await buildExport(await allDays(), await allEvents());
+      const cur = await buildExport(await allDays(), await allEvents(), await allPeople());
       if (cur.counts.total > 0) download(`lifeos-覆盖前自动备份_${todayKey()}.json`, JSON.stringify(cur, null, 2), 'application/json');
       if (!window.confirm('将先下载一份当前数据的自动备份，然后清空并恢复为导入文件的内容。继续？')) return;
     }
@@ -97,14 +97,17 @@ export default function Data({ goRecord }: { goRecord: (date: string) => void })
     const s = sampleData();
     await db.days.bulkPut(s.days);
     await db.events.bulkPut(s.events);
-    setMsg('已载入虚构示例数据（全部带「示例」标记）。到 K线 页把健康、情绪维度切到日K能看到蜡烛、点和留空的区别。');
+    await db.people.bulkPut(s.people);
+    setMsg('已载入虚构示例数据（全部带「示例」标记）。到 K线 页把健康、情绪维度切到日K能看到蜡烛、点和留空的区别；「人物」页能看到示例联系人和 @ 提及。');
   };
   const onClearSynthetic = async () => {
     const ds = (await allDays()).filter((d) => d.synthetic);
     const es = (await allEvents()).filter((e) => e.synthetic);
+    const ps = (await allPeople()).filter((p) => p.synthetic);
     await db.days.bulkDelete(ds.map((d) => d.date));
     await db.events.bulkDelete(es.map((e) => e.id));
-    setMsg(`已清除示例数据 ${ds.length + es.length} 条，真实数据未动。`);
+    await db.people.bulkDelete(ps.map((p) => p.id));
+    setMsg(`已清除示例数据 ${ds.length + es.length + ps.length} 条，真实数据未动。`);
   };
   const onClearAll = async () => {
     if (!window.confirm('清空全部数据？强烈建议先导出备份。此操作不可恢复。')) return;
@@ -160,7 +163,7 @@ export default function Data({ goRecord }: { goRecord: (date: string) => void })
         )}
         {pending && (
           <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-sm space-y-2" data-testid="import-preview">
-            <p>预览：日记录 {pending.preview.days} 条，事件 {pending.preview.events} 条
+            <p>预览：日记录 {pending.preview.days} 条，事件 {pending.preview.events} 条{pending.preview.people ? `，联系人 ${pending.preview.people} 位` : ''}
               {pending.preview.dateFrom ? `，范围 ${pending.preview.dateFrom} ~ ${pending.preview.dateTo}` : ''}
               {pending.preview.exportedAt ? `，导出于 ${pending.preview.exportedAt.slice(0, 10)}` : ''}。校验和已通过。</p>
             <div className="flex gap-2">

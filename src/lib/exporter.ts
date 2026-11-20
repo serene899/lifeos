@@ -8,7 +8,7 @@
  *   不静默吞掉，更不写入事实层。
  */
 import { canonicalize, sha256Hex } from './canonical';
-import { APP_VERSION, DIM_KEYS, DIM_LABEL, FACT_KEYS, type DayRecord, type LifeEvent } from './types';
+import { APP_VERSION, DIM_KEYS, DIM_LABEL, FACT_KEYS, type DayRecord, type LifeEvent, type Person } from './types';
 import { deviceTz, nowUtc } from './time';
 
 export interface ExportFile {
@@ -17,28 +17,33 @@ export interface ExportFile {
   appVersion: string;
   exportedAt: string;
   timezone: string;
-  counts: { days: number; events: number; total: number };
+  counts: { days: number; events: number; total: number; people?: number };
   checksum: { alg: 'SHA-256'; canonicalization: 'canonical-json-sorted-keys'; value: string };
   days: DayRecord[];
   events: LifeEvent[];
+  /** 通讯录（v0.3.0 起，可选）：旧版导出文件没有这个字段，导入照常兼容 */
+  people?: Person[];
 }
 
 const FORBIDDEN_FACT_KEYS = ['exerciseMinutes', 'mealCount', 'mealLogged', 'assetSnapshot', 'assetAmount', 'simPnl', 'simulatedPnl', 'steps', 'calories'];
 
-export async function buildExport(days: DayRecord[], events: LifeEvent[]): Promise<ExportFile> {
+export async function buildExport(days: DayRecord[], events: LifeEvent[], people: Person[] = []): Promise<ExportFile> {
   const ds = [...days].sort((a, b) => (a.date < b.date ? -1 : 1));
   const es = [...events].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt < b.createdAt ? -1 : 1));
-  const value = await sha256Hex(canonicalize({ days: ds, events: es }));
+  const ps = [...people].sort((a, b) => (a.name < b.name ? -1 : 1));
+  // 校验和口径：没有通讯录时与 v0.2.x 完全一致（旧文件照常验得过）；有通讯录时把 people 一并纳入
+  const value = await sha256Hex(canonicalize(ps.length ? { days: ds, events: es, people: ps } : { days: ds, events: es }));
   return {
     format: 'lifeos-export-v1',
     app: 'lifeos',
     appVersion: APP_VERSION,
     exportedAt: nowUtc(),
     timezone: deviceTz(),
-    counts: { days: ds.length, events: es.length, total: ds.length + es.length },
+    counts: { days: ds.length, events: es.length, total: ds.length + es.length + ps.length, ...(ps.length ? { people: ps.length } : {}) },
     checksum: { alg: 'SHA-256', canonicalization: 'canonical-json-sorted-keys', value },
     days: ds,
     events: es,
+    ...(ps.length ? { people: ps } : {}),
   };
 }
 
@@ -49,6 +54,7 @@ export function exportFileName(localDate: string): string {
 export interface ImportPreview {
   days: number;
   events: number;
+  people: number;
   dateFrom?: string;
   dateTo?: string;
   exportedAt?: string;
@@ -94,13 +100,23 @@ export async function validateExportFile(raw: unknown): Promise<{ errors: string
   for (const e of f.events as LifeEvent[]) {
     if (!e.id || !dateRe.test(e.date ?? '') || typeof e.title !== 'string') errors.push('有一条事件缺少 id / 日期 / 标题');
   }
+  if (f.people !== undefined) {
+    if (!Array.isArray(f.people)) errors.push('people 不是数组');
+    else for (const p of f.people as Person[]) {
+      if (!p.id || typeof p.name !== 'string' || !p.name.trim()) errors.push('通讯录里有一条缺少 id / 名字');
+    }
+  }
   if (f.counts && (f.counts.days !== f.days.length || f.counts.events !== f.events.length)) {
     errors.push('counts 与实际条数不符');
+  }
+  if (f.counts?.people !== undefined && Array.isArray(f.people) && f.counts.people !== f.people.length) {
+    errors.push('counts.people 与实际人数不符');
   }
   if (!errors.length && f.checksum?.value) {
     const ds = [...(f.days as DayRecord[])].sort((a, b) => (a.date < b.date ? -1 : 1));
     const es = [...(f.events as LifeEvent[])].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt < b.createdAt ? -1 : 1));
-    const value = await sha256Hex(canonicalize({ days: ds, events: es }));
+    const ps = [...((f.people ?? []) as Person[])].sort((a, b) => (a.name < b.name ? -1 : 1));
+    const value = await sha256Hex(canonicalize(ps.length ? { days: ds, events: es, people: ps } : { days: ds, events: es }));
     if (value !== f.checksum.value) errors.push('校验和不符，文件可能被改动或损坏');
   }
   if (errors.length) return { errors };
@@ -112,6 +128,7 @@ export function previewOf(file: ExportFile): ImportPreview {
   return {
     days: file.days.length,
     events: file.events.length,
+    people: file.people?.length ?? 0,
     dateFrom: dates[0],
     dateTo: dates[dates.length - 1],
     exportedAt: file.exportedAt,
@@ -120,7 +137,7 @@ export function previewOf(file: ExportFile): ImportPreview {
 }
 
 /** 人类可读 Markdown 导出：按日期列出六维、事实与原文故事 */
-export function buildMarkdown(days: DayRecord[], events: LifeEvent[]): string {
+export function buildMarkdown(days: DayRecord[], events: LifeEvent[], people: Person[] = []): string {
   const ds = [...days].sort((a, b) => (a.date < b.date ? -1 : 1));
   const evByDate = new Map<string, LifeEvent[]>();
   for (const e of events) {
@@ -158,6 +175,12 @@ export function buildMarkdown(days: DayRecord[], events: LifeEvent[]): string {
   if (orphan.length) {
     lines.push('## 只有事件、没有日记录的日期', '');
     for (const e of orphan.sort((a, b) => (a.date < b.date ? -1 : 1))) lines.push(`- ${e.date}：${e.title}${e.note ? ` —— ${e.note}` : ''}`);
+  }
+  if (people.length) {
+    lines.push('', '## 通讯录', '');
+    for (const p of [...people].sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      lines.push(`- ${p.name}（${p.relation || '未填关系'}）${p.note ? `：${p.note}` : ''}`);
+    }
   }
   return lines.join('\n');
 }

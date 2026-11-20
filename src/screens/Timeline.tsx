@@ -1,9 +1,20 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
-import { hasAnyData, type LifeEvent } from '../lib/types';
+import { hasAnyData, type LifeEvent, type Person } from '../lib/types';
 import { deleteEvent, saveEvent } from '../lib/repo';
+import { parseMentions } from '../lib/people';
 import { todayKey } from '../lib/time';
+
+function Hl({ text, people }: { text: string; people: Person[] }) {
+  return (
+    <>
+      {parseMentions(text, people).map((s, i) => s.person
+        ? <span key={i} className="font-medium text-[#007aff]">{s.text}</span>
+        : <span key={i}>{s.text}</span>)}
+    </>
+  );
+}
 
 interface Item {
   date: string;
@@ -16,6 +27,7 @@ interface Item {
 export default function Timeline({ goRecord }: { goRecord: (date: string) => void }) {
   const days = useLiveQuery(() => db.days.toArray(), [], []);
   const events = useLiveQuery(() => db.events.toArray(), [], []);
+  const people = useLiveQuery(() => db.people.toArray(), [], [] as Person[]);
   const [editing, setEditing] = useState<LifeEvent | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [fDate, setFDate] = useState(todayKey());
@@ -80,8 +92,8 @@ export default function Timeline({ goRecord }: { goRecord: (date: string) => voi
             </div>
             <div className="flex-1 min-w-0">
               <button className="text-left w-full" onClick={() => goRecord(it.date)}>
-                <p>{it.title}</p>
-                {it.note && <p className="muted mt-0.5 whitespace-pre-line">{it.note}</p>}
+                <p><Hl text={it.title} people={people ?? []} /></p>
+                {it.note && <p className="muted mt-0.5 whitespace-pre-line"><Hl text={it.note} people={people ?? []} /></p>}
               </button>
               {it.event && (
                 <div className="flex gap-3 mt-1.5">

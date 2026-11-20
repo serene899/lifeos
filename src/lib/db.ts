@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { AutoDay, DayRecord, LifeEvent } from './types';
+import type { AutoDay, DayRecord, LifeEvent, Person } from './types';
 
 export const DB_NAME = 'lifeos-kline';
 
@@ -8,6 +8,7 @@ export class LifeKlineDB extends Dexie {
   events!: Table<LifeEvent, string>;
   meta!: Table<{ key: string; value: unknown }, string>;
   autoDays!: Table<AutoDay, string>;
+  people!: Table<Person, string>;
 
   constructor(name = DB_NAME) {
     super(name);
@@ -22,6 +23,14 @@ export class LifeKlineDB extends Dexie {
       events: 'id, date, updatedAt',
       meta: 'key',
       autoDays: 'date',
+    });
+    // v3：新增通讯录 people（人物 + 自定义关系，只作故事 @ 提及与按人汇总）
+    this.version(3).stores({
+      days: 'date, updatedAt',
+      events: 'id, date, updatedAt',
+      meta: 'key',
+      autoDays: 'date',
+      people: 'id, name',
     });
   }
 }

@@ -109,6 +109,35 @@ test('收数据：导入生息交换文件 → 健康维度出现自动分（菱
   await expect(page.getByTestId('kline-list')).toContainText('睡眠 7小时30分');
 });
 
+test('通讯录 + 故事 @ 提及：加人 → 写故事选人 → 人物页看到这一天', async ({ page }) => {
+  await page.goto('/');
+  // 人物页加人
+  await page.getByTestId('tab-people').click();
+  await page.getByTestId('add-person').click();
+  await page.getByTestId('person-name').fill('王子怡');
+  await page.getByTestId('person-relation').fill('同事');
+  await page.getByTestId('person-save').click();
+  // 保存后进入这个人的详情页（还没被任何记录提到）
+  await expect(page.getByRole('heading', { name: '王子怡' })).toBeVisible();
+  await expect(page.getByText('还没有哪天的记录提到 TA')).toBeVisible();
+  // 记录页写故事，打 @ 弹出选人条，点选插入
+  await page.getByTestId('tab-record').click();
+  const story = page.getByTestId('story');
+  await story.click();
+  await story.pressSequentially('下午跟 @王');
+  await expect(page.getByTestId('mention-list')).toBeVisible();
+  await page.getByTestId('mention-王子怡').click();
+  await expect(story).toHaveValue('下午跟 @王子怡 ');
+  await story.pressSequentially('去吃火锅，锅底很香');
+  await page.getByTestId('save-btn').click();
+  await expect(page.getByTestId('save-msg')).toContainText('已保存');
+  // 回到人物页：王子怡显示「1 天有关」，点开能看到这条故事
+  await page.getByTestId('tab-people').click();
+  await expect(page.getByTestId('person-王子怡')).toContainText('1 天有关');
+  await page.getByTestId('person-王子怡').click();
+  await expect(page.getByTestId('related-day').first()).toContainText('去吃火锅');
+});
+
 test('事件增删 + 导出文件为 lifeos-export-v1 + 示例数据', async ({ page }) => {
   await page.getByTestId('tab-timeline').click();
   await page.getByTestId('add-event-btn').click();

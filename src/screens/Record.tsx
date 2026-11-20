@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { ANCHOR_CANDIDATE, DIM_HINT, DIM_KEYS, DIM_LABEL, FACT_KEYS, FACT_LABEL, emptyDay, type DayRecord, type DimState, type Level } from '../lib/types';
-import { deleteDay, getAutoDay, getDay, saveDay } from '../lib/repo';
+import { useEffect, useRef, useState } from 'react';
+import { ANCHOR_CANDIDATE, DIM_HINT, DIM_KEYS, DIM_LABEL, FACT_KEYS, FACT_LABEL, emptyDay, type DayRecord, type DimState, type Level, type Person } from '../lib/types';
+import { allPeople, deleteDay, getAutoDay, getDay, saveDay, savePerson } from '../lib/repo';
+import { activeMentionQuery } from '../lib/people';
 import { fmtMinutes } from '../lib/autoscore';
 import type { AutoDay } from '../lib/types';
 import { prettyDay, todayKey } from '../lib/time';
@@ -37,6 +38,39 @@ export default function Record({ date, onDateChange }: { date: string; onDateCha
   const [detailed, setDetailed] = useState(false);
   const [auto, setAuto] = useState<AutoDay | undefined>();
   useEffect(() => { getAutoDay(date).then(setAuto).catch(() => setAuto(undefined)); }, [date]);
+
+  // 故事 @ 提及：通讯录名单 + 正在输入的 @ 查询
+  const [people, setPeople] = useState<Person[]>([]);
+  const [mention, setMention] = useState<{ query: string; start: number; caret: number } | null>(null);
+  const storyRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { allPeople().then(setPeople).catch(() => setPeople([])); }, []);
+
+  const onStoryChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const v = e.target.value;
+    setRec({ ...rec, story: v || undefined });
+    const caret = e.target.selectionStart ?? v.length;
+    const q = activeMentionQuery(v, caret);
+    setMention(q ? { ...q, caret } : null);
+  };
+  const insertMention = (name: string) => {
+    if (!mention) return;
+    const cur = rec.story ?? '';
+    const next = `${cur.slice(0, mention.start)}@${name} ${cur.slice(mention.caret)}`;
+    setRec({ ...rec, story: next });
+    setMention(null);
+    requestAnimationFrame(() => {
+      const el = storyRef.current;
+      if (el) { const pos = mention.start + name.length + 2; el.focus(); el.setSelectionRange(pos, pos); }
+    });
+  };
+  const pickPerson = (p: Person) => insertMention(p.name);
+  const createAndPick = async (name: string) => {
+    const p = await savePerson({ name, relation: '' });
+    setPeople(await allPeople());
+    insertMention(p.name);
+  };
+  const mentionMatches = mention ? people.filter((p) => !mention.query || p.name.includes(mention.query)).slice(0, 6) : [];
+  const mentionCanCreate = !!mention && mention.query.trim().length > 0 && !people.some((p) => p.name === mention.query.trim());
 
   useEffect(() => {
     let alive = true;
@@ -199,8 +233,24 @@ export default function Record({ date, onDateChange }: { date: string; onDateCha
         )}
         <label className="block">
           <span className="text-sm muted">今天的故事 / 最重要的一件事</span>
-          <textarea className="input mt-1" data-testid="story" value={rec.story ?? ''} onChange={(e) => setRec({ ...rec, story: e.target.value || undefined })} placeholder="用自己的话记下来，多年后点开K线先看到的是它" />
+          <textarea ref={storyRef} className="input mt-1" data-testid="story" value={rec.story ?? ''} onChange={onStoryChange} placeholder="用自己的话记下来。打 @ 可以提到一个人，比如：下午跟 @王子怡 去吃火锅" />
         </label>
+        {mention && (mentionMatches.length > 0 || mentionCanCreate) && (
+          <div className="rounded-xl border p-1.5 space-y-0.5" style={{ borderColor: 'rgb(var(--c-ink) / 0.12)', background: 'rgb(var(--c-card))' }} data-testid="mention-list">
+            {mentionMatches.map((p) => (
+              <button key={p.id} type="button" className="w-full text-left px-2.5 py-2 rounded-lg active:bg-black/5 dark:active:bg-white/10" data-testid={`mention-${p.name}`} onClick={() => pickPerson(p)}>
+                <span className="font-medium">@{p.name}</span>
+                {p.relation && <span className="muted text-sm"> · {p.relation}</span>}
+              </button>
+            ))}
+            {mentionCanCreate && (
+              <button type="button" className="w-full text-left px-2.5 py-2 rounded-lg text-[#007aff]" data-testid="mention-create" onClick={() => createAndPick(mention.query.trim())}>
+                ＋ 新建联系人「{mention.query.trim()}」（关系之后到「人物」页补）
+              </button>
+            )}
+          </div>
+        )}
+        <p className="text-xs muted">小提示：写故事时打 @ 就能选人；通讯录在底部「人物」页，可以先把常出现的人加好，写上「他是我的谁」。</p>
       </section>
 
       {errors.length > 0 && (

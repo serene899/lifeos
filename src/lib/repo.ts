@@ -1,5 +1,5 @@
 import { db } from './db';
-import type { AutoDay, DayRecord, LifeEvent } from './types';
+import type { AutoDay, DayRecord, LifeEvent, Person } from './types';
 import { deviceTz, nowUtc, todayKey, uuid } from './time';
 import type { ExportFile } from './exporter';
 
@@ -52,23 +52,51 @@ export async function deleteEvent(id: string): Promise<void> {
   await db.events.delete(id);
 }
 
+/* ---------- 通讯录 ---------- */
+
+export async function allPeople(): Promise<Person[]> {
+  return (await db.people.toArray()).sort((a, b) => (a.name < b.name ? -1 : 1));
+}
+export async function savePerson(input: { id?: string; name: string; relation: string; note?: string; synthetic?: boolean }): Promise<Person> {
+  const now = nowUtc();
+  const existing = input.id ? await db.people.get(input.id) : undefined;
+  const p: Person = {
+    id: input.id ?? uuid(),
+    name: input.name.trim(),
+    relation: input.relation.trim(),
+    note: input.note?.trim() || undefined,
+    synthetic: existing?.synthetic ?? input.synthetic,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    tz: deviceTz(),
+  };
+  await db.people.put(p);
+  return p;
+}
+export async function deletePerson(id: string): Promise<void> {
+  await db.people.delete(id);
+}
+
 /** 导入写入：merge=按日期/id 合并（同日同 id 以导入为准）；overwrite=先清空再写入 */
 export async function applyImport(file: ExportFile, mode: 'merge' | 'overwrite'): Promise<void> {
-  await db.transaction('rw', db.days, db.events, async () => {
+  await db.transaction('rw', db.days, db.events, db.people, async () => {
     if (mode === 'overwrite') {
       await db.days.clear();
       await db.events.clear();
+      await db.people.clear();
     }
     if (file.days.length) await db.days.bulkPut(file.days);
     if (file.events.length) await db.events.bulkPut(file.events);
+    if (file.people?.length) await db.people.bulkPut(file.people);
   });
 }
 
 export async function clearAll(): Promise<void> {
-  await db.transaction('rw', db.days, db.events, db.autoDays, async () => {
+  await db.transaction('rw', db.days, db.events, db.autoDays, db.people, async () => {
     await db.days.clear();
     await db.events.clear();
     await db.autoDays.clear();
+    await db.people.clear();
   });
 }
 

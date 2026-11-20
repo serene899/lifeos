@@ -3,7 +3,7 @@
  * 规格依据：V0.3.3 终审规格（所有者 2026-11-19 下达的 12 条规则）。
  * 核心定位：记录真实人生，而不是评判人生。
  */
-export const APP_VERSION = '0.2.0';
+export const APP_VERSION = '0.3.0';
 export const EXPORT_FORMAT = 'lifeos-export-v1' as const;
 
 /** 六个维度，且只有六个。关系与生活事件不是维度，只进时间轴（规则 2、3）。 */
@@ -93,6 +93,28 @@ export interface DayRecord {
   updatedAt: string;
   tz: string;
 }
+
+/**
+ * 通讯录人物（所有者 2026-11-21 提出）：记录生活里的人和「他是我的谁」。
+ * 关系是自由文本（同学/朋友/同事/家人/自定义…），因为生活里的关系没法穷举。
+ * 人物只用于在故事里 @ 提及、并按人汇总相关的日子——不是维度、不评分（规则 3 的本意）。
+ */
+export interface Person {
+  id: string;
+  /** 名字，如「王子怡」；故事里以 @名字 提及 */
+  name: string;
+  /** 他是我的谁：自由文本，如「同事」「高中同学」「姐姐」 */
+  relation: string;
+  /** 备注（可选）：在哪认识的、公司/学校等，随便写 */
+  note?: string;
+  synthetic?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  tz: string;
+}
+
+/** 关系快捷选项（只是输入快捷方式，永远可以自己打字写别的） */
+export const RELATION_PRESETS = ['朋友', '同事', '同学', '家人', '亲戚', '店里客人', '网友'];
 
 /** 时间轴事件：只作标记，不带维度、不带评分（规则 3） */
 export interface LifeEvent {
