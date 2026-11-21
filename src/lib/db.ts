@@ -9,6 +9,7 @@ export class LifeKlineDB extends Dexie {
   meta!: Table<{ key: string; value: unknown }, string>;
   autoDays!: Table<AutoDay, string>;
   people!: Table<Person, string>;
+  avatars!: Table<{ personId: string; dataUrl: string }, string>;
 
   constructor(name = DB_NAME) {
     super(name);
@@ -31,6 +32,15 @@ export class LifeKlineDB extends Dexie {
       meta: 'key',
       autoDays: 'date',
       people: 'id, name',
+    });
+    // v4：新增 avatars（人物头像 data URL，独立表，不动 people 记录形状）
+    this.version(4).stores({
+      days: 'date, updatedAt',
+      events: 'id, date, updatedAt',
+      meta: 'key',
+      autoDays: 'date',
+      people: 'id, name',
+      avatars: 'personId',
     });
   }
 }

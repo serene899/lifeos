@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { APP_VERSION, EXPORT_FORMAT, hasAnyData } from '../lib/types';
-import { allDays, allEvents, allPeople, applyImport, clearAll, clearAutoDays, mergeAutoDays, setMeta } from '../lib/repo';
+import { allAvatars, allDays, allEvents, allPeople, applyImport, clearAll, clearAutoDays, mergeAutoDays, setMeta } from '../lib/repo';
 import { buildExport, buildMarkdown, exportFileName, previewOf, validateExportFile, type ExportFile, type ImportPreview } from '../lib/exporter';
 import { parseExchange, type ExchangePreview } from '../lib/exchange';
 import { sampleData } from '../lib/sample';
@@ -59,7 +59,7 @@ export default function Data({ goRecord, onBack }: { goRecord: (date: string) =>
   const sortedDays = [...(days ?? [])].sort((a, b) => (a.date > b.date ? -1 : 1));
 
   const onExportJson = async () => {
-    const f = await buildExport(await allDays(), await allEvents(), await allPeople());
+    const f = await buildExport(await allDays(), await allEvents(), await allPeople(), await allAvatars());
     download(exportFileName(todayKey()), JSON.stringify(f, null, 2), 'application/json');
     await setMeta('lastExportAt', new Date().toISOString());
     setMsg(`已导出 ${f.counts.total} 条（格式 ${EXPORT_FORMAT}，含校验和）。请把文件存到你自己掌控的位置，如 iCloud 文件。`);
@@ -85,7 +85,7 @@ export default function Data({ goRecord, onBack }: { goRecord: (date: string) =>
     if (!pending) return;
     if (mode === 'overwrite') {
       // 覆盖前自动导出当前数据留底，避免误操作无可挽回
-      const cur = await buildExport(await allDays(), await allEvents(), await allPeople());
+      const cur = await buildExport(await allDays(), await allEvents(), await allPeople(), await allAvatars());
       if (cur.counts.total > 0) download(`lifeos-覆盖前自动备份_${todayKey()}.json`, JSON.stringify(cur, null, 2), 'application/json');
       if (!window.confirm('将先下载一份当前数据的自动备份，然后清空并恢复为导入文件的内容。继续？')) return;
     }

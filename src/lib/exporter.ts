@@ -10,6 +10,7 @@
 import { canonicalize, sha256Hex } from './canonical';
 import { APP_VERSION, DIM_KEYS, DIM_LABEL, FACT_KEYS, type DayRecord, type LifeEvent, type Person } from './types';
 import { deviceTz, nowUtc } from './time';
+import { personContacts } from './people';
 
 export interface ExportFile {
   format: 'lifeos-export-v1';
@@ -23,16 +24,25 @@ export interface ExportFile {
   events: LifeEvent[];
   /** 通讯录（v0.3.0 起，可选）：旧版导出文件没有这个字段，导入照常兼容 */
   people?: Person[];
+  /** 人物头像（v0.4.1 起，可选）：personId → data URL；只进自己的备份，不进交换文件 */
+  avatars?: Record<string, string>;
+}
+
+/** 校验和口径：无通讯录时与 v0.2.x 一致；有 people/avatars 时才纳入，旧文件照常验得过 */
+export function checksumPayload(ds: DayRecord[], es: LifeEvent[], ps: Person[], avatars: Record<string, string>) {
+  const payload: Record<string, unknown> = { days: ds, events: es };
+  if (ps.length) payload.people = ps;
+  if (Object.keys(avatars).length) payload.avatars = avatars;
+  return payload;
 }
 
 const FORBIDDEN_FACT_KEYS = ['exerciseMinutes', 'mealCount', 'mealLogged', 'assetSnapshot', 'assetAmount', 'simPnl', 'simulatedPnl', 'steps', 'calories'];
 
-export async function buildExport(days: DayRecord[], events: LifeEvent[], people: Person[] = []): Promise<ExportFile> {
+export async function buildExport(days: DayRecord[], events: LifeEvent[], people: Person[] = [], avatars: Record<string, string> = {}): Promise<ExportFile> {
   const ds = [...days].sort((a, b) => (a.date < b.date ? -1 : 1));
   const es = [...events].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt < b.createdAt ? -1 : 1));
   const ps = [...people].sort((a, b) => (a.name < b.name ? -1 : 1));
-  // 校验和口径：没有通讯录时与 v0.2.x 完全一致（旧文件照常验得过）；有通讯录时把 people 一并纳入
-  const value = await sha256Hex(canonicalize(ps.length ? { days: ds, events: es, people: ps } : { days: ds, events: es }));
+  const value = await sha256Hex(canonicalize(checksumPayload(ds, es, ps, avatars)));
   return {
     format: 'lifeos-export-v1',
     app: 'lifeos',
@@ -44,6 +54,7 @@ export async function buildExport(days: DayRecord[], events: LifeEvent[], people
     days: ds,
     events: es,
     ...(ps.length ? { people: ps } : {}),
+    ...(Object.keys(avatars).length ? { avatars } : {}),
   };
 }
 
@@ -106,6 +117,12 @@ export async function validateExportFile(raw: unknown): Promise<{ errors: string
       if (!p.id || typeof p.name !== 'string' || !p.name.trim()) errors.push('通讯录里有一条缺少 id / 名字');
     }
   }
+  if (f.avatars !== undefined) {
+    if (typeof f.avatars !== 'object' || f.avatars === null || Array.isArray(f.avatars)) errors.push('avatars 不是对象');
+    else for (const [k, v] of Object.entries(f.avatars as Record<string, unknown>)) {
+      if (typeof v !== 'string' || !v.startsWith('data:image/')) errors.push(`头像 ${k} 不是图片数据`);
+    }
+  }
   if (f.counts && (f.counts.days !== f.days.length || f.counts.events !== f.events.length)) {
     errors.push('counts 与实际条数不符');
   }
@@ -116,7 +133,7 @@ export async function validateExportFile(raw: unknown): Promise<{ errors: string
     const ds = [...(f.days as DayRecord[])].sort((a, b) => (a.date < b.date ? -1 : 1));
     const es = [...(f.events as LifeEvent[])].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt < b.createdAt ? -1 : 1));
     const ps = [...((f.people ?? []) as Person[])].sort((a, b) => (a.name < b.name ? -1 : 1));
-    const value = await sha256Hex(canonicalize(ps.length ? { days: ds, events: es, people: ps } : { days: ds, events: es }));
+    const value = await sha256Hex(canonicalize(checksumPayload(ds, es, ps, (f.avatars ?? {}) as Record<string, string>)));
     if (value !== f.checksum.value) errors.push('校验和不符，文件可能被改动或损坏');
   }
   if (errors.length) return { errors };
@@ -180,8 +197,7 @@ export function buildMarkdown(days: DayRecord[], events: LifeEvent[], people: Pe
     lines.push('', '## 通讯录', '');
     for (const p of [...people].sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const extra: string[] = [];
-      if (p.phone) extra.push(`手机 ${p.phone}`);
-      if (p.wechat) extra.push(`微信 ${p.wechat}`);
+      for (const c of personContacts(p)) extra.push(`${c.label} ${c.value}`);
       if (p.birthday) extra.push(`生日 ${p.birthday}`);
       if (p.anniversaries?.length) extra.push(p.anniversaries.map((a) => `${a.label} ${a.date}`).join('；'));
       lines.push(`- ${p.name}（${p.relation || '未填关系'}）${p.note ? `：${p.note}` : ''}${extra.length ? `｜${extra.join(' · ')}` : ''}`);

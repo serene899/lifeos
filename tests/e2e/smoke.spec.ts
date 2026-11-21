@@ -117,12 +117,20 @@ test('通讯录 + 故事 @ 提及：加人 → 写故事选人 → 人物页看�
   await page.getByTestId('add-person').click();
   await page.getByTestId('person-name').fill('张三');
   await page.getByTestId('person-relation').fill('同事');
+  // v0.4.1：给联系人加头像（1×1 PNG 占位），表单预览应变成图片
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  await page.getByTestId('avatar-file').setInputFiles({ name: 'a.png', mimeType: 'image/png', buffer: png });
+  await expect(page.getByTestId('person-avatar')).toHaveJSProperty('tagName', 'IMG');
   await page.getByTestId('person-more-toggle').click();
-  await page.getByTestId('person-phone').fill('13800000000');
+  // v0.4.1：联系方式是自定义条目——点「添加一项」，名称自己起、内容自己填
+  await page.getByTestId('add-contact').click();
+  await page.getByTestId('contact-label-0').fill('手机');
+  await page.getByTestId('contact-value-0').fill('13800000000');
   await page.getByTestId('person-birthday').fill('1995-11-25');
   await page.getByTestId('person-save').click();
-  // 保存后进入这个人的详情页（还没被任何记录提到），联系方式与生日都在
+  // 保存后进入这个人的详情页（还没被任何记录提到），头像、联系方式与生日都在
   await expect(page.getByRole('heading', { name: '张三' })).toBeVisible();
+  await expect(page.getByTestId('person-avatar')).toHaveJSProperty('tagName', 'IMG');
   await expect(page.getByText('还没有哪天的记录提到 TA')).toBeVisible();
   await expect(page.getByTestId('contact-info')).toContainText('13800000000');
   await expect(page.getByTestId('important-days')).toContainText('11月25日');
@@ -131,10 +139,14 @@ test('通讯录 + 故事 @ 提及：加人 → 写故事选人 → 人物页看�
   await page.getByTestId('record-today').click();
   const story = page.getByTestId('story');
   await story.click();
-  await story.pressSequentially('下午跟 @张');
+  // 输入框字号必须是 16px：小于 16px 时 iOS Safari 聚焦会自动放大页面且不还原（v0.4.1 修复）
+  const fs = await story.evaluate((el) => getComputedStyle(el).fontSize);
+  expect(fs).toBe('16px');
+  // 紧贴汉字打 @（不加空格）也要弹出选人条（v0.4.1 修复：旧规则要求 @ 前是空格/标点）
+  await story.pressSequentially('下午跟@张');
   await expect(page.getByTestId('mention-list')).toBeVisible();
   await page.getByTestId('mention-张三').click();
-  await expect(story).toHaveValue('下午跟 @张三 ');
+  await expect(story).toHaveValue('下午跟@张三 ');
   await story.pressSequentially('去吃火锅，锅底很香');
   await page.getByTestId('save-btn').click();
   await expect(page.getByTestId('kline-chart')).toBeVisible();
@@ -146,12 +158,27 @@ test('通讯录 + 故事 @ 提及：加人 → 写故事选人 → 人物页看�
 });
 
 test('首页日期详情里加事件 + 设置页导出 lifeos-export-v1 + 示例数据', async ({ page }) => {
+  // 先加一个人，供事件备注里 @ 提及（v0.4.1：事件表单也支持 @ 选人）
+  await page.getByTestId('tab-people').click();
+  await page.getByTestId('add-person').click();
+  await page.getByTestId('person-name').fill('李四');
+  await page.getByTestId('person-relation').fill('朋友');
+  await page.getByTestId('person-save').click();
+  await page.getByTestId('tab-home').click();
+
   await page.locator(`[data-testid="day-row"][data-date="${todayStr()}"]`).click();
   await expect(page.getByTestId('day-detail')).toBeVisible();
   await page.getByTestId('add-event-btn').click();
   await page.getByTestId('event-title').fill('e2e 事件：搬家');
+  const note = page.getByTestId('event-note');
+  await note.click();
+  await note.pressSequentially('跟@李');
+  await expect(page.getByTestId('event-mention-list')).toBeVisible();
+  await page.getByTestId('event-mention-李四').click();
+  await expect(note).toHaveValue('跟@李四 ');
   await page.getByTestId('event-save').click();
   await expect(page.getByTestId('day-detail')).toContainText('e2e 事件：搬家');
+  await expect(page.getByTestId('day-detail')).toContainText('@李四');
 
   await page.getByTestId('open-settings').click();
   const dl = page.waitForEvent('download');

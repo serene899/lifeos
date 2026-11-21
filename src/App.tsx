@@ -44,13 +44,14 @@ export default function App() {
 
       {!overlay && (
         <nav className="sticky bottom-0 safe-bottom border-t border-black/5 dark:border-white/10 bg-[rgb(var(--c-card))]/85 backdrop-blur-xl">
-          <div className="max-w-[560px] mx-auto grid grid-cols-2">
+          <div className="relative max-w-[560px] mx-auto grid grid-cols-2">
+            <span aria-hidden="true" className="nav-pill" style={{ transform: tab === 'people' ? 'translateX(calc(100% + 8px))' : 'translateX(0)' }} />
             {TABS.map((t) => (
               <button
                 key={t.key}
                 data-testid={`tab-${t.key}`}
                 onClick={() => setTab(t.key)}
-                className={`py-2 flex flex-col items-center gap-0.5 text-[11px] ${tab === t.key ? 'text-[#007aff] font-medium' : 'text-[rgb(var(--c-ink))]/50'}`}
+                className={`relative py-2 flex flex-col items-center gap-0.5 text-[11px] ${tab === t.key ? 'text-[#007aff] font-medium' : 'text-[rgb(var(--c-ink))]/50'}`}
               >
                 <span className="text-[19px] leading-none">{t.icon}</span>
                 {t.label}

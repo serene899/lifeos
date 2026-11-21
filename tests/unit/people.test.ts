@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeMentionQuery, daysUntilAnnual, parseMentions, prettyMonthDay, relatedDays, sanitizeAnniversaries } from '../../src/lib/people';
+import { activeMentionQuery, daysUntilAnnual, parseMentions, personContacts, prettyMonthDay, relatedDays, sanitizeAnniversaries, sanitizeContacts } from '../../src/lib/people';
 import { buildExport, validateExportFile } from '../../src/lib/exporter';
 import { emptyDay, type LifeEvent, type Person } from '../../src/lib/types';
 
@@ -49,6 +49,53 @@ describe('输入中的 @ 查询', () => {
   });
   it('句首 @ 也算', () => {
     expect(activeMentionQuery('@阿', 2)).toEqual({ query: '阿', start: 0 });
+  });
+  it('紧贴汉字打 @ 也能触发（v0.4.1 修复：旧规则要求 @ 前是空格/标点，用户实测选不了人）', () => {
+    expect(activeMentionQuery('下午跟@张', 5)).toEqual({ query: '张', start: 3 });
+    expect(activeMentionQuery('下午跟@', 4)).toEqual({ query: '', start: 3 });
+  });
+  it('全角 ＠ 也能触发', () => {
+    expect(activeMentionQuery('下午跟＠张', 5)).toEqual({ query: '张', start: 3 });
+  });
+  it('邮箱样式不触发（@ 前是英文字母）', () => {
+    expect(activeMentionQuery('发到 abc@张', 8)).toBeNull();
+  });
+  it('全角 ＠ 写进故事也能解析与汇总', () => {
+    const ps = [P('张小明', '同事'), P('阿杰')];
+    const segs = parseMentions('下午跟＠张小明去吃火锅', ps);
+    expect(segs.find((s) => s.person)?.person?.name).toBe('张小明');
+    const day = { ...emptyDay('2026-11-20', 'Asia/Shanghai'), story: '跟＠阿杰 聊了很久' };
+    const rel = relatedDays(P('阿杰'), [day], []);
+    expect(rel).toHaveLength(1);
+  });
+});
+
+describe('自定义联系方式条目（v0.4.1）', () => {
+  it('清洗：去空条目、修剪空白、无名称兜底「其他」', () => {
+    expect(sanitizeContacts([
+      { label: ' 微信 ', value: ' wx_1 ' },
+      { label: '', value: '' },
+      { label: '', value: '只有内容' },
+    ])).toEqual([
+      { label: '微信', value: 'wx_1' },
+      { label: '其他', value: '只有内容' },
+    ]);
+    expect(sanitizeContacts([])).toBeUndefined();
+    expect(sanitizeContacts(undefined)).toBeUndefined();
+  });
+  it('旧固定字段折算成条目，顺序稳定', () => {
+    const p = { ...P('张三'), phone: '138', wechat: 'wx', instagram: 'ins', email: 'a@b.co', org: '某公司' };
+    expect(personContacts(p)).toEqual([
+      { label: '手机', value: '138' },
+      { label: '微信', value: 'wx' },
+      { label: 'Instagram', value: 'ins' },
+      { label: '邮箱', value: 'a@b.co' },
+      { label: '单位', value: '某公司' },
+    ]);
+  });
+  it('有 contacts 时以 contacts 为准，不再读旧字段', () => {
+    const p = { ...P('张三'), phone: '138', contacts: [{ label: 'QQ', value: '12345' }] };
+    expect(personContacts(p)).toEqual([{ label: 'QQ', value: '12345' }]);
   });
 });
 

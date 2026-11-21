@@ -5,7 +5,7 @@ import { DIM_KEYS, DIM_LABEL, type DimKey, type LifeEvent, type Person } from '.
 import { buildSeries, mergeAutoPoints, type DayBar, type Period, type PeriodBar } from '../lib/kline';
 import { computeAutoScores, fmtMinutes } from '../lib/autoscore';
 import { deleteEvent, saveEvent } from '../lib/repo';
-import { parseMentions } from '../lib/people';
+import { activeMentionQuery, parseMentions } from '../lib/people';
 import { addDays, monthStart, prettyDay, todayKey, weekStart } from '../lib/time';
 
 const UP = '#e5484d';
@@ -70,6 +70,7 @@ export default function Home({ goRecord, openSettings }: { goRecord: (date: stri
     if (!evForm.title.trim()) { setMsg('事件标题不能为空'); return; }
     await saveEvent({ id: evForm.id, date: evForm.date, title: evForm.title, note: evForm.note });
     setEvForm(null);
+    setEvMention(null);
     setMsg('事件已保存');
   };
   const onDeleteEvent = async (e: LifeEvent) => {
@@ -77,6 +78,25 @@ export default function Home({ goRecord, openSettings }: { goRecord: (date: stri
     await deleteEvent(e.id);
     setMsg('事件已删除');
   };
+
+  // 事件表单里也能 @ 人（v0.4.1：用户在加事件时打 @ 选不了人，故事和事件两处统一支持）
+  const [evMention, setEvMention] = useState<{ field: 'title' | 'note'; query: string; start: number; caret: number } | null>(null);
+  const onEvField = (field: 'title' | 'note') => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (!evForm) return;
+    const v = e.target.value;
+    setEvForm({ ...evForm, [field]: v });
+    const caret = e.target.selectionStart ?? v.length;
+    const q = activeMentionQuery(v, caret);
+    setEvMention(q ? { field, ...q, caret } : null);
+  };
+  const insertEvMention = (name: string) => {
+    if (!evForm || !evMention) return;
+    const cur = evForm[evMention.field];
+    const next = `${cur.slice(0, evMention.start)}@${name} ${cur.slice(evMention.caret)}`;
+    setEvForm({ ...evForm, [evMention.field]: next });
+    setEvMention(null);
+  };
+  const evMatches = evMention ? (people ?? []).filter((p) => !evMention.query || p.name.includes(evMention.query)).slice(0, 6) : [];
 
   return (
     <div className="space-y-4">
@@ -187,22 +207,32 @@ export default function Home({ goRecord, openSettings }: { goRecord: (date: stri
             {selEvents.map((e) => (
               <div key={e.id} className="flex items-start gap-2 text-sm">
                 <span className="text-[#af52de]">◆</span>
-                <span className="flex-1">{e.title}{e.note ? <span className="muted"> ｜<MentionText text={e.note} people={people ?? []} /></span> : null}</span>
-                <button className="text-[#007aff] text-xs shrink-0" onClick={() => setEvForm({ id: e.id, date: e.date, title: e.title, note: e.note ?? '' })}>编辑</button>
+                <span className="flex-1"><MentionText text={e.title} people={people ?? []} />{e.note ? <span className="muted"> ｜<MentionText text={e.note} people={people ?? []} /></span> : null}</span>
+                <button className="text-[#007aff] text-xs shrink-0" onClick={() => { setEvForm({ id: e.id, date: e.date, title: e.title, note: e.note ?? '' }); setEvMention(null); }}>编辑</button>
                 <button className="text-[#ff3b30] text-xs shrink-0" onClick={() => onDeleteEvent(e)}>删除</button>
               </div>
             ))}
             {!evForm && (
-              <button className="text-[#007aff] text-sm" onClick={() => setEvForm({ date: selected, title: '', note: '' })} data-testid="add-event-btn">＋ 添加事件</button>
+              <button className="text-[#007aff] text-sm" onClick={() => { setEvForm({ date: selected, title: '', note: '' }); setEvMention(null); }} data-testid="add-event-btn">＋ 添加事件</button>
             )}
             {evForm && (
               <div className="space-y-2 pt-1" data-testid="event-form">
                 <input type="date" className="input" value={evForm.date} max={today} onChange={(e) => setEvForm({ ...evForm, date: e.target.value })} data-testid="event-date" />
-                <input className="input" value={evForm.title} onChange={(e) => setEvForm({ ...evForm, title: e.target.value })} placeholder="发生了什么，如：搬家 / 和家人旅行" data-testid="event-title" />
-                <textarea className="input" value={evForm.note} onChange={(e) => setEvForm({ ...evForm, note: e.target.value })} placeholder="备注（可选）" data-testid="event-note" />
+                <input className="input" value={evForm.title} onChange={onEvField('title')} placeholder="发生了什么，如：搬家 / 和家人旅行（打 @ 可提人）" data-testid="event-title" />
+                <textarea className="input" value={evForm.note} onChange={onEvField('note')} placeholder="备注（可选，打 @ 可提人）" data-testid="event-note" />
+                {evMention && evMatches.length > 0 && (
+                  <div className="rounded-xl border p-1.5 space-y-0.5" style={{ borderColor: 'rgb(var(--c-ink) / 0.12)', background: 'rgb(var(--c-card))' }} data-testid="event-mention-list">
+                    {evMatches.map((p) => (
+                      <button key={p.id} type="button" className="w-full text-left px-2.5 py-2 rounded-lg active:bg-black/5 dark:active:bg-white/10" data-testid={`event-mention-${p.name}`} onClick={() => insertEvMention(p.name)}>
+                        <span className="font-medium">@{p.name}</span>
+                        {p.relation && <span className="muted text-sm"> · {p.relation}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <button className="btn-primary flex-1" onClick={onSaveEvent} data-testid="event-save">保存事件</button>
-                  <button className="btn-ghost" onClick={() => setEvForm(null)}>取消</button>
+                  <button className="btn-ghost" onClick={() => { setEvForm(null); setEvMention(null); }}>取消</button>
                 </div>
               </div>
             )}
@@ -231,10 +261,12 @@ export default function Home({ goRecord, openSettings }: { goRecord: (date: stri
           const day = (days ?? []).find((d) => d.date === b.date);
           const evs = eventsOn(b.date);
           const isSel = selected === b.date;
+          // 完全没记录的日子用安静的瘦行（无卡片底），列表不被空卡片淹没；有内容的仍是卡片
+          const quiet = !day && b.kind === 'empty' && evs.length === 0 && !isSel;
           return (
-            <button key={b.date} className="card !py-3 text-sm w-full text-left" style={isSel ? { borderColor: '#007aff' } : undefined} onClick={() => setSelected(isSel ? null : b.date)} data-testid="day-row" data-date={b.date}>
+            <button key={b.date} className={quiet ? 'w-full text-left text-sm px-2 py-1.5 opacity-55' : 'card !py-3 text-sm w-full text-left'} style={isSel ? { borderColor: '#007aff' } : undefined} onClick={() => setSelected(isSel ? null : b.date)} data-testid="day-row" data-date={b.date}>
               <div className="flex justify-between gap-3">
-                <span className="font-medium shrink-0">{b.date.slice(5)}</span>
+                <span className={`${quiet ? '' : 'font-medium'} shrink-0`}>{b.date.slice(5)}</span>
                 <span className="muted text-right">
                   {b.kind === 'candle' ? `开 ${b.ohlc.open} · 高 ${b.ohlc.high} · 低 ${b.ohlc.low} · 收 ${b.ohlc.close}` :
                     b.kind === 'point' && 'auto' in b && b.auto ? <span className="text-amber-600 dark:text-amber-400">自动分 {b.value} · {b.auto.basis}</span> :

@@ -3,7 +3,7 @@
  * 规格依据：V0.3.3 终审规格（所有者 2026-11-19 下达的 12 条规则）。
  * 核心定位：记录真实人生，而不是评判人生。
  */
-export const APP_VERSION = '0.4.0';
+export const APP_VERSION = '0.4.1';
 export const EXPORT_FORMAT = 'lifeos-export-v1' as const;
 
 /** 六个维度，且只有六个。关系与生活事件不是维度，只进时间轴（规则 2、3）。 */
@@ -121,6 +121,12 @@ export interface Person {
   address?: string;
   /** 公司 / 学校等（自由文本） */
   org?: string;
+  /**
+   * 自定义联系方式条目（v0.4.1，所有者要求）：名称+内容自由增删——不预设每个人都有每个平台。
+   * 有此字段时以它为准；上面 phone/wechat/… 是 v0.3.1 的旧固定字段，仅作旧数据兼容：
+   * personContacts() 会把旧字段折算成条目展示，编辑保存时统一写回 contacts 并清掉旧字段（数据不丢）。
+   */
+  contacts?: { label: string; value: string }[];
   synthetic?: boolean;
   createdAt: string;
   updatedAt: string;
