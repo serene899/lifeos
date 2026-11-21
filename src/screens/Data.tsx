@@ -24,7 +24,7 @@ const SOURCE_LABEL: Record<string, string> = {
   'lifeos.yueji': '阅迹',
 };
 
-export default function Data({ goRecord }: { goRecord: (date: string) => void }) {
+export default function Data({ goRecord, onBack }: { goRecord: (date: string) => void; onBack: () => void }) {
   const days = useLiveQuery(() => db.days.toArray(), [], []);
   const autoDays = useLiveQuery(() => db.autoDays.toArray(), [], []);
   const [msg, setMsg] = useState('');
@@ -119,7 +119,8 @@ export default function Data({ goRecord }: { goRecord: (date: string) => void })
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-[26px] font-bold">数据</h1>
+        <button className="text-[#007aff] text-sm -ml-1 mb-1" onClick={onBack} data-testid="back-home">‹ 返回首页</button>
+        <h1 className="text-[22px] font-bold tracking-tight">设置 · 数据</h1>
         <p className="muted text-sm mt-1">数据只存在这台设备的浏览器本地（IndexedDB），没有服务器。导出备份是你自己的责任，也是唯一的恢复手段。</p>
       </header>
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { aggregateBar, buildSeries, dayBar, validateDimState } from '../../src/lib/kline';
+import type { AutoScore, DimKey } from '../../src/lib/types';
+type AutoMap = Map<string, Partial<Record<DimKey, AutoScore>>>;
 import { emptyDay, type DayRecord } from '../../src/lib/types';
 
 function day(date: string, dims: DayRecord['dims']): DayRecord {
@@ -40,20 +42,21 @@ describe('日K 三态（规则 4、5）', () => {
   });
 });
 
-describe('周/月聚合', () => {
+describe('周/月聚合（v0.4.0 有效评分口径）', () => {
   const days = [
-    day('2026-11-09', { health: { morning: 3, best: 4, worst: 2 } }), // 周一
-    day('2026-11-11', { health: { evening: 5, best: 5, worst: 3 } }),
-    day('2026-11-13', { health: { evening: 2 } }),
+    day('2026-11-09', { health: { morning: 3, best: 4, worst: 2 } }), // 周一：有效评分=晨间 3（无晚间时取晨间）
+    day('2026-11-11', { health: { evening: 5, best: 5, worst: 3 } }), // 有效评分=晚间 5
+    day('2026-11-13', { health: { evening: 2 } }), // 有效评分=晚间 2
   ];
-  it('Open=首个晨间值，Close=最后晚间值，High/Low=极值，覆盖天数如实', () => {
+  it('开=第一条有效评分，收=最后一条，高/低=极值，覆盖天数如实', () => {
     const b = aggregateBar(days, 'health', '2026-11-09', '2026-11-15');
     expect(b.kind).toBe('candle');
     expect(b.ohlc).toEqual({ open: 3, high: 5, low: 2, close: 2 });
     expect(b.recordedDays).toBe(3);
+    expect(b.autoDays).toBe(0);
     expect(b.totalDays).toBe(7);
   });
-  it('周期内没有任何晨间值 → 没有 Open，不给蜡烛，只给点（Close）', () => {
+  it('周期内只有一条有效评分 → 只给点，不强行生成蜡烛', () => {
     const ds = [day('2026-11-10', { health: { evening: 4, best: 5, worst: 3 } })];
     const b = aggregateBar(ds, 'health', '2026-11-09', '2026-11-15');
     expect(b.kind).toBe('point');
@@ -63,6 +66,36 @@ describe('周/月聚合', () => {
     const b = aggregateBar(days, 'finance', '2026-11-09', '2026-11-15');
     expect(b.kind).toBe('empty');
     expect(b.recordedDays).toBe(0);
+  });
+  it('只有自动分的一周也能成蜡烛（修复旧版周/月不显示自动分）', () => {
+    const auto: AutoMap = new Map([
+      ['2026-11-09', { health: { score: 4, basis: '睡眠 7小时30分' } }],
+      ['2026-11-11', { health: { score: 2, basis: '睡眠 5小时10分' } }],
+      ['2026-11-13', { health: { score: 5, basis: '睡眠 8小时20分' } }],
+    ]);
+    const b = aggregateBar([], 'health', '2026-11-09', '2026-11-15', auto);
+    expect(b.kind).toBe('candle');
+    expect(b.ohlc).toEqual({ open: 4, high: 5, low: 2, close: 5 });
+    expect(b.recordedDays).toBe(3);
+    expect(b.autoDays).toBe(3);
+  });
+  it('手动与自动混合：手动优先，同日手动在则不用自动分', () => {
+    const ds = [day('2026-11-10', { health: { evening: 3 } })];
+    const auto: AutoMap = new Map([
+      ['2026-11-10', { health: { score: 5, basis: '自动' } }],
+      ['2026-11-12', { health: { score: 4, basis: '自动' } }],
+    ]);
+    const b = aggregateBar(ds, 'health', '2026-11-09', '2026-11-15', auto);
+    expect(b.kind).toBe('candle');
+    expect(b.ohlc).toEqual({ open: 3, high: 4, low: 3, close: 4 });
+    expect(b.autoDays).toBe(1);
+  });
+  it('只有一条自动分 → 点，不是蜡烛', () => {
+    const auto: AutoMap = new Map([['2026-11-10', { health: { score: 4, basis: '睡眠' } }]]);
+    const b = aggregateBar([], 'health', '2026-11-09', '2026-11-15', auto);
+    expect(b.kind).toBe('point');
+    if (b.kind === 'point') expect(b.value).toBe(4);
+    expect(b.autoDays).toBe(1);
   });
   it('周序列按周一切分，月序列按自然月切分', () => {
     const w = buildSeries(days, 'health', 'week', '2026-11-09', '2026-11-22');

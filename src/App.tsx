@@ -1,54 +1,64 @@
 import { useState } from 'react';
-import Overview from './screens/Overview';
+import Home from './screens/Home';
 import Record from './screens/Record';
-import Kline from './screens/Kline';
-import Timeline from './screens/Timeline';
-import People from './screens/People';
 import Data from './screens/Data';
+import People from './screens/People';
 import { todayKey } from './lib/time';
 
-type Tab = 'overview' | 'record' | 'kline' | 'timeline' | 'people' | 'data';
+type Tab = 'home' | 'people';
+type Overlay = { type: 'record'; date: string } | { type: 'settings' } | null;
+
 const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: 'overview', label: '总览', icon: '◐' },
-  { key: 'record', label: '记录', icon: '✎' },
-  { key: 'kline', label: 'K线', icon: '∿' },
-  { key: 'timeline', label: '时间轴', icon: '◆' },
+  { key: 'home', label: '首页', icon: '⌂' },
   { key: 'people', label: '人物', icon: '人' },
-  { key: 'data', label: '数据', icon: '⤓' },
 ];
 
+/**
+ * v0.4.0 产品结构（所有者改版指令）：底部只保留两个一级入口——首页（人生K线图）与人物。
+ * 记录是首页的辅助操作（二级页，保存后回首页）；数据管理收进首页右上角的设置入口（二级页）。
+ */
 export default function App() {
-  const [tab, setTab] = useState<Tab>('overview');
-  const [recordDate, setRecordDate] = useState(todayKey());
+  const [tab, setTab] = useState<Tab>('home');
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  const [recordDate, setRecordDate] = useState<string>(todayKey());
 
-  const goRecord = (date: string) => { setRecordDate(date); setTab('record'); };
+  const goRecord = (date: string) => {
+    setRecordDate(date);
+    setOverlay({ type: 'record', date });
+  };
+  const closeOverlay = () => setOverlay(null);
 
   return (
     <div className="min-h-full flex flex-col">
-      <main className="flex-1 w-full max-w-[560px] mx-auto px-4 pt-5 pb-28">
-        {tab === 'overview' && <Overview goRecord={goRecord} goKline={() => setTab('kline')} />}
-        {tab === 'record' && <Record key={recordDate} date={recordDate} onDateChange={setRecordDate} />}
-        {tab === 'kline' && <Kline goRecord={goRecord} />}
-        {tab === 'timeline' && <Timeline goRecord={goRecord} />}
-        {tab === 'people' && <People goRecord={goRecord} />}
-        {tab === 'data' && <Data goRecord={goRecord} />}
+      <main className="flex-1 w-full max-w-[560px] mx-auto px-4 pt-5 pb-6">
+        {overlay?.type === 'record' ? (
+          <Record key={recordDate} date={recordDate} onDateChange={setRecordDate} onBack={closeOverlay} />
+        ) : overlay?.type === 'settings' ? (
+          <Data goRecord={goRecord} onBack={closeOverlay} />
+        ) : tab === 'home' ? (
+          <Home goRecord={goRecord} openSettings={() => setOverlay({ type: 'settings' })} />
+        ) : (
+          <People goRecord={goRecord} />
+        )}
       </main>
-      <nav className="fixed bottom-0 inset-x-0 z-20 safe-bottom" style={{ background: 'rgb(var(--c-card) / 0.92)', backdropFilter: 'blur(14px)', borderTop: '1px solid rgb(var(--c-ink) / 0.08)' }}>
-        <div className="max-w-[560px] mx-auto grid grid-cols-6">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              data-testid={`tab-${t.key}`}
-              onClick={() => setTab(t.key)}
-              className="py-2 flex flex-col items-center gap-0.5"
-              style={{ color: tab === t.key ? '#007aff' : 'rgb(var(--c-ink) / 0.55)' }}
-            >
-              <span className="text-[17px] leading-none">{t.icon}</span>
-              <span className="text-[11px] font-medium">{t.label}</span>
-            </button>
-          ))}
-        </div>
-      </nav>
+
+      {!overlay && (
+        <nav className="sticky bottom-0 safe-bottom border-t border-black/5 dark:border-white/10 bg-[rgb(var(--c-card))]/85 backdrop-blur-xl">
+          <div className="max-w-[560px] mx-auto grid grid-cols-2">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                data-testid={`tab-${t.key}`}
+                onClick={() => setTab(t.key)}
+                className={`py-2 flex flex-col items-center gap-0.5 text-[11px] ${tab === t.key ? 'text-[#007aff] font-medium' : 'text-[rgb(var(--c-ink))]/50'}`}
+              >
+                <span className="text-[19px] leading-none">{t.icon}</span>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

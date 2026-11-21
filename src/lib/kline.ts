@@ -26,7 +26,7 @@ export type DayBar =
 /**
  * 把自动分并入日K：某天某维手动完全没记、且该天有自动分时，呈现为「自动点」（带依据）。
  * 手动只要记了任何一项，自动分就不出现——手动永远优先（所有者 2026-11-19 拍板）。
- * 周/月聚合不并自动分：聚合口径只认手动 OHLC，避免两种口径混进一根蜡烛。
+ * 周/月不在这里并点，而是由 aggregateBar 按「有效评分」口径统一聚合（v0.4.0 指令第七节）。
  */
 export function mergeAutoPoints(
   bars: (DayBar | PeriodBar)[],
@@ -72,46 +72,63 @@ export interface PeriodBar {
   end: string;
   ohlc?: Ohlc;
   value?: number;
-  /** 有该维度任一主观值的天数 */
+  /** 周期内有「有效评分」的天数（手动或自动，手动优先） */
   recordedDays: number;
+  /** 其中评分来自自动分的天数 */
+  autoDays: number;
   /** 周期总天数 */
   totalDays: number;
 }
 
 /**
- * 周/月聚合：Open=周期内第一个有晨间值的日子的晨间值；Close=最后一个有晚间值的日子的晚间值；
- * High=所有最好值的最大值；Low=所有最差值的最小值。四者缺一就不给蜡烛（规则 4 在聚合层同样成立）。
+ * 一天的「有效评分」（v0.4.0 所有者指令第七节口径）：手动记了就用手动的代表值
+ * （晚间优先，与日K点位同口径；整根蜡烛日的代表值即收盘=晚间）；手动没记才用自动分。
+ * 返回 null = 这天这个维度没有任何评分。
  */
-export function aggregateBar(days: DayRecord[], dim: DimKey, start: string, end: string): PeriodBar {
-  const inRange = days
-    .filter((d) => d.date >= start && d.date <= end)
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
+export function effectiveValue(
+  day: DayRecord | undefined,
+  dim: DimKey,
+  auto?: AutoScore,
+): { value: number; source: 'manual' | 'auto' } | null {
+  const s = day?.dims[dim];
+  const v = s?.evening ?? s?.morning ?? s?.best ?? s?.worst;
+  if (v !== undefined) return { value: v, source: 'manual' };
+  if (auto) return { value: auto.score, source: 'auto' };
+  return null;
+}
+
+/**
+ * 周/月聚合（v0.4.0 改版口径，替代旧的「按 OHLC 字段拼」算法）：
+ * 按周期内每天的「有效评分」聚合——开=第一条有效评分、收=最后一条、高=最高、低=最低；
+ * 只有一条有效评分时给点，不强行生成蜡烛；没有就留空，绝不补造。
+ * 这样自动分与手动分在同一口径下进入周/月K（修复旧版周/月不显示自动分的问题），手动仍优先。
+ */
+export function aggregateBar(
+  days: DayRecord[],
+  dim: DimKey,
+  start: string,
+  end: string,
+  autoScores?: Map<string, Partial<Record<DimKey, AutoScore>>>,
+): PeriodBar {
+  const byDate = new Map(days.map((d) => [d.date, d]));
   const totalDays = daysBetween(start, end) + 1;
-  let recordedDays = 0;
-  let open: number | undefined;
-  let close: number | undefined;
-  let high: number | undefined;
-  let low: number | undefined;
-  for (const d of inRange) {
-    const s = d.dims[dim];
-    if (!s) continue;
-    if (s.morning === undefined && s.evening === undefined && s.best === undefined && s.worst === undefined) continue;
-    recordedDays++;
-    if (open === undefined && s.morning !== undefined) open = s.morning;
-    if (s.evening !== undefined) close = s.evening;
-    if (s.best !== undefined) high = high === undefined ? s.best : Math.max(high, s.best);
-    if (s.worst !== undefined) low = low === undefined ? s.worst : Math.min(low, s.worst);
+  const entries: { value: number; source: 'manual' | 'auto' }[] = [];
+  for (let cur = start; cur <= end; cur = addDays(cur, 1)) {
+    const eff = effectiveValue(byDate.get(cur), dim, autoScores?.get(cur)?.[dim]);
+    if (eff) entries.push(eff);
   }
-  if (recordedDays === 0) return { kind: 'empty', start, end, recordedDays, totalDays };
-  if (open !== undefined && close !== undefined && high !== undefined && low !== undefined) {
-    const ohlc = { open, high, low, close };
-    if (high >= Math.max(open, close) && low <= Math.min(open, close)) {
-      return { kind: 'candle', start, end, ohlc, recordedDays, totalDays };
-    }
-  }
-  const value = close ?? open;
-  if (value !== undefined) return { kind: 'point', start, end, value, recordedDays, totalDays };
-  return { kind: 'empty', start, end, recordedDays, totalDays };
+  const recordedDays = entries.length;
+  const autoDays = entries.filter((e) => e.source === 'auto').length;
+  if (recordedDays === 0) return { kind: 'empty', start, end, recordedDays, autoDays, totalDays };
+  if (recordedDays === 1) return { kind: 'point', start, end, value: entries[0]!.value, recordedDays, autoDays, totalDays };
+  const values = entries.map((e) => e.value);
+  const ohlc: Ohlc = {
+    open: entries[0]!.value,
+    close: entries[entries.length - 1]!.value,
+    high: Math.max(...values),
+    low: Math.min(...values),
+  };
+  return { kind: 'candle', start, end, ohlc, recordedDays, autoDays, totalDays };
 }
 
 export type Period = 'day' | 'week' | 'month';
@@ -120,8 +137,8 @@ export interface PeriodSeries {
   bars: (DayBar | PeriodBar)[];
 }
 
-/** 生成日/周/月序列。日序列逐日一格（含 empty 格，留空不填充）；周/月按自然周（周一起）/自然月切分。 */
-export function buildSeries(days: DayRecord[], dim: DimKey, period: Period, from: string, to: string): (DayBar | PeriodBar)[] {
+/** 生成日/周/月序列。日序列逐日一格（含 empty 格，留空不填充）；周/月按自然周（周一起）/自然月切分。autoScores 只影响周/月聚合（日K的自动点由 mergeAutoPoints 并入）。 */
+export function buildSeries(days: DayRecord[], dim: DimKey, period: Period, from: string, to: string, autoScores?: Map<string, Partial<Record<DimKey, AutoScore>>>): (DayBar | PeriodBar)[] {
   if (period === 'day') {
     const byDate = new Map(days.map((d) => [d.date, d]));
     const out: DayBar[] = [];
@@ -136,13 +153,13 @@ export function buildSeries(days: DayRecord[], dim: DimKey, period: Period, from
     let start = weekStart(from);
     while (start <= to) {
       const end = addDays(start, 6);
-      out.push(aggregateBar(days, dim, start, end));
+      out.push(aggregateBar(days, dim, start, end, autoScores));
       start = addDays(start, 7);
     }
   } else {
     let start = monthStart(from);
     while (start <= to) {
-      out.push(aggregateBar(days, dim, start, monthEnd(start)));
+      out.push(aggregateBar(days, dim, start, monthEnd(start), autoScores));
       start = monthStart(addDays(monthEnd(start), 1));
     }
   }
