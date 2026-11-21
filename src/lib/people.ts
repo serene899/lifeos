@@ -2,11 +2,43 @@
  * @ 提及解析与按人汇总。
  *
  * 故事里的人物以「@名字」纯文本保存（不引入富文本结构，导出/备份就是普通文字，人也能读）。
- * 解析时按通讯录现有人名匹配（长名优先，避免「王子」误匹配「王子怡」的前缀问题反过来——
+ * 解析时按通讯录现有人名匹配（长名优先，避免「张」误匹配「张小明」的前缀问题——
  * 实际取最长匹配）。人物改名后，旧故事里的旧名字不再匹配，这是纯文本方案的已知取舍，
  * 人物详情页会提示「按现在的名字搜不到的日子，可能是改名前的旧提及」。
  */
 import type { DayRecord, LifeEvent, Person } from './types';
+import { daysBetween, todayKey } from './time';
+
+/** 清洗纪念日列表：去掉空行、修剪空白（纯函数，供 repo 保存前调用）。 */
+export function sanitizeAnniversaries(list: { label: string; date: string }[] | undefined): { label: string; date: string }[] | undefined {
+  const out = (list ?? [])
+    .map((a) => ({ label: a.label.trim(), date: a.date.trim() }))
+    .filter((a) => a.label && /^\d{4}-\d{2}-\d{2}$/.test(a.date));
+  return out.length ? out : undefined;
+}
+
+/**
+ * 离下一次「月日纪念」（生日/纪念日）还有多少天：0=今天。
+ * 入参接受 YYYY-MM-DD 或 MM-DD；2 月 29 日在平年按 3 月 1 日算（Date 自动顺延）。
+ */
+export function daysUntilAnnual(dateStr: string, today: string = todayKey()): number | null {
+  const m = /(?:^\d{4}-)?(\d{2})-(\d{2})$/.exec(dateStr.trim());
+  if (!m) return null;
+  const [, mm, dd] = m;
+  const year = Number(today.slice(0, 4));
+  const cand = `${year}-${mm}-${dd}`;
+  const target = cand >= today ? cand : `${year + 1}-${mm}-${dd}`;
+  // 2/29 在平年会落到不存在的日期键：用 daysBetween 的本地日期解析（自动顺延到 3/1）兜底
+  const diff = daysBetween(today, target);
+  return Number.isFinite(diff) ? diff : null;
+}
+
+/** 「11月25日」式展示 */
+export function prettyMonthDay(dateStr: string): string {
+  const m = /(?:^\d{4}-)?(\d{2})-(\d{2})$/.exec(dateStr.trim());
+  if (!m) return dateStr;
+  return `${Number(m[1])}月${Number(m[2])}日`;
+}
 
 export interface Segment {
   text: string;

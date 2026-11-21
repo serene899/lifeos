@@ -179,7 +179,12 @@ export function buildMarkdown(days: DayRecord[], events: LifeEvent[], people: Pe
   if (people.length) {
     lines.push('', '## 通讯录', '');
     for (const p of [...people].sort((a, b) => (a.name < b.name ? -1 : 1))) {
-      lines.push(`- ${p.name}（${p.relation || '未填关系'}）${p.note ? `：${p.note}` : ''}`);
+      const extra: string[] = [];
+      if (p.phone) extra.push(`手机 ${p.phone}`);
+      if (p.wechat) extra.push(`微信 ${p.wechat}`);
+      if (p.birthday) extra.push(`生日 ${p.birthday}`);
+      if (p.anniversaries?.length) extra.push(p.anniversaries.map((a) => `${a.label} ${a.date}`).join('；'));
+      lines.push(`- ${p.name}（${p.relation || '未填关系'}）${p.note ? `：${p.note}` : ''}${extra.length ? `｜${extra.join(' · ')}` : ''}`);
     }
   }
   return lines.join('\n');

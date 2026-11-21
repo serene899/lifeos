@@ -114,27 +114,31 @@ test('通讯录 + 故事 @ 提及：加人 → 写故事选人 → 人物页看�
   // 人物页加人
   await page.getByTestId('tab-people').click();
   await page.getByTestId('add-person').click();
-  await page.getByTestId('person-name').fill('王子怡');
+  await page.getByTestId('person-name').fill('张三');
   await page.getByTestId('person-relation').fill('同事');
+  await page.getByTestId('person-phone').fill('13800000000');
+  await page.getByTestId('person-birthday').fill('1995-11-25');
   await page.getByTestId('person-save').click();
-  // 保存后进入这个人的详情页（还没被任何记录提到）
-  await expect(page.getByRole('heading', { name: '王子怡' })).toBeVisible();
+  // 保存后进入这个人的详情页（还没被任何记录提到），联系方式与生日都在
+  await expect(page.getByRole('heading', { name: '张三' })).toBeVisible();
   await expect(page.getByText('还没有哪天的记录提到 TA')).toBeVisible();
+  await expect(page.getByTestId('contact-info')).toContainText('13800000000');
+  await expect(page.getByTestId('important-days')).toContainText('11月25日');
   // 记录页写故事，打 @ 弹出选人条，点选插入
   await page.getByTestId('tab-record').click();
   const story = page.getByTestId('story');
   await story.click();
-  await story.pressSequentially('下午跟 @王');
+  await story.pressSequentially('下午跟 @张');
   await expect(page.getByTestId('mention-list')).toBeVisible();
-  await page.getByTestId('mention-王子怡').click();
-  await expect(story).toHaveValue('下午跟 @王子怡 ');
+  await page.getByTestId('mention-张三').click();
+  await expect(story).toHaveValue('下午跟 @张三 ');
   await story.pressSequentially('去吃火锅，锅底很香');
   await page.getByTestId('save-btn').click();
   await expect(page.getByTestId('save-msg')).toContainText('已保存');
-  // 回到人物页：王子怡显示「1 天有关」，点开能看到这条故事
+  // 回到人物页：张三显示「1 天有关」，点开能看到这条故事
   await page.getByTestId('tab-people').click();
-  await expect(page.getByTestId('person-王子怡')).toContainText('1 天有关');
-  await page.getByTestId('person-王子怡').click();
+  await expect(page.getByTestId('person-张三')).toContainText('1 天有关');
+  await page.getByTestId('person-张三').click();
   await expect(page.getByTestId('related-day').first()).toContainText('去吃火锅');
 });
 

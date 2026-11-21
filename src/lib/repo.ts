@@ -1,6 +1,7 @@
 import { db } from './db';
 import type { AutoDay, DayRecord, LifeEvent, Person } from './types';
 import { deviceTz, nowUtc, todayKey, uuid } from './time';
+import { sanitizeAnniversaries } from './people';
 import type { ExportFile } from './exporter';
 
 export async function getDay(date: string): Promise<DayRecord | undefined> {
@@ -57,14 +58,29 @@ export async function deleteEvent(id: string): Promise<void> {
 export async function allPeople(): Promise<Person[]> {
   return (await db.people.toArray()).sort((a, b) => (a.name < b.name ? -1 : 1));
 }
-export async function savePerson(input: { id?: string; name: string; relation: string; note?: string; synthetic?: boolean }): Promise<Person> {
+export async function savePerson(input: {
+  id?: string; name: string; relation: string; note?: string; synthetic?: boolean;
+  phone?: string; wechat?: string; douyin?: string; instagram?: string; whatsapp?: string; email?: string;
+  birthday?: string; anniversaries?: { label: string; date: string }[]; address?: string; org?: string;
+}): Promise<Person> {
   const now = nowUtc();
   const existing = input.id ? await db.people.get(input.id) : undefined;
+  const clean = (s?: string) => s?.trim() || undefined;
   const p: Person = {
     id: input.id ?? uuid(),
     name: input.name.trim(),
     relation: input.relation.trim(),
-    note: input.note?.trim() || undefined,
+    note: clean(input.note),
+    phone: clean(input.phone),
+    wechat: clean(input.wechat),
+    douyin: clean(input.douyin),
+    instagram: clean(input.instagram),
+    whatsapp: clean(input.whatsapp),
+    email: clean(input.email),
+    birthday: clean(input.birthday),
+    anniversaries: sanitizeAnniversaries(input.anniversaries),
+    address: clean(input.address),
+    org: clean(input.org),
     synthetic: existing?.synthetic ?? input.synthetic,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,

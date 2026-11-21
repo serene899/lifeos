@@ -3,7 +3,7 @@
  * 规格依据：V0.3.3 终审规格（所有者 2026-11-19 下达的 12 条规则）。
  * 核心定位：记录真实人生，而不是评判人生。
  */
-export const APP_VERSION = '0.3.0';
+export const APP_VERSION = '0.3.1';
 export const EXPORT_FORMAT = 'lifeos-export-v1' as const;
 
 /** 六个维度，且只有六个。关系与生活事件不是维度，只进时间轴（规则 2、3）。 */
@@ -101,12 +101,26 @@ export interface DayRecord {
  */
 export interface Person {
   id: string;
-  /** 名字，如「王子怡」；故事里以 @名字 提及 */
+  /** 名字，如「张三」；故事里以 @名字 提及 */
   name: string;
   /** 他是我的谁：自由文本，如「同事」「高中同学」「姐姐」 */
   relation: string;
-  /** 备注（可选）：在哪认识的、公司/学校等，随便写 */
+  /** 备注（可选）：在哪认识的，随便写 */
   note?: string;
+  /* —— 联系方式与重要日子（v0.3.1，所有者提出；全部选填、只存本机，绝不进任何交换文件） —— */
+  phone?: string;
+  wechat?: string;
+  douyin?: string;
+  instagram?: string;
+  whatsapp?: string;
+  email?: string;
+  /** 生日 YYYY-MM-DD（年份只作记录，临近天数按月日算） */
+  birthday?: string;
+  /** 两人之间的纪念日，可多条，如「第一次一起吃饭」 */
+  anniversaries?: { label: string; date: string }[];
+  address?: string;
+  /** 公司 / 学校等（自由文本） */
+  org?: string;
   synthetic?: boolean;
   createdAt: string;
   updatedAt: string;

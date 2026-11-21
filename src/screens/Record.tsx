@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ANCHOR_CANDIDATE, DIM_HINT, DIM_KEYS, DIM_LABEL, FACT_KEYS, FACT_LABEL, emptyDay, type DayRecord, type DimState, type Level, type Person } from '../lib/types';
 import { allPeople, deleteDay, getAutoDay, getDay, saveDay, savePerson } from '../lib/repo';
 import { activeMentionQuery } from '../lib/people';
@@ -52,16 +52,21 @@ export default function Record({ date, onDateChange }: { date: string; onDateCha
     const q = activeMentionQuery(v, caret);
     setMention(q ? { ...q, caret } : null);
   };
+  const [pendingCaret, setPendingCaret] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (pendingCaret !== null && storyRef.current) {
+      storyRef.current.focus();
+      storyRef.current.setSelectionRange(pendingCaret, pendingCaret);
+      setPendingCaret(null);
+    }
+  }, [pendingCaret, rec.story]);
   const insertMention = (name: string) => {
     if (!mention) return;
     const cur = rec.story ?? '';
     const next = `${cur.slice(0, mention.start)}@${name} ${cur.slice(mention.caret)}`;
     setRec({ ...rec, story: next });
     setMention(null);
-    requestAnimationFrame(() => {
-      const el = storyRef.current;
-      if (el) { const pos = mention.start + name.length + 2; el.focus(); el.setSelectionRange(pos, pos); }
-    });
+    setPendingCaret(mention.start + name.length + 2);
   };
   const pickPerson = (p: Person) => insertMention(p.name);
   const createAndPick = async (name: string) => {
@@ -233,7 +238,7 @@ export default function Record({ date, onDateChange }: { date: string; onDateCha
         )}
         <label className="block">
           <span className="text-sm muted">今天的故事 / 最重要的一件事</span>
-          <textarea ref={storyRef} className="input mt-1" data-testid="story" value={rec.story ?? ''} onChange={onStoryChange} placeholder="用自己的话记下来。打 @ 可以提到一个人，比如：下午跟 @王子怡 去吃火锅" />
+          <textarea ref={storyRef} className="input mt-1" data-testid="story" value={rec.story ?? ''} onChange={onStoryChange} placeholder="用自己的话记下来。打 @ 可以提到一个人，比如：下午跟 @张三 去吃火锅" />
         </label>
         {mention && (mentionMatches.length > 0 || mentionCanCreate) && (
           <div className="rounded-xl border p-1.5 space-y-0.5" style={{ borderColor: 'rgb(var(--c-ink) / 0.12)', background: 'rgb(var(--c-card))' }} data-testid="mention-list">
