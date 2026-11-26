@@ -138,8 +138,10 @@ export default function Record({ date, onDateChange, onBack }: { date: string; o
 
   return (
     <div className="space-y-4">
+      <div className="sticky-head -mx-4 px-4 py-1.5">
+        <button className="text-[#007aff] text-sm" onClick={onBack} data-testid="back-home">‹ 返回首页</button>
+      </div>
       <header>
-        <button className="text-[#007aff] text-sm -ml-1 mb-1" onClick={onBack} data-testid="back-home">‹ 返回首页</button>
         <h1 className="text-[22px] font-bold tracking-tight">日常记录</h1>
         <div className="flex items-center gap-2 mt-2">
           <input type="date" className="input !w-auto" value={date} max={todayKey()} onChange={(e) => e.target.value && onDateChange(e.target.value)} data-testid="date-input" />

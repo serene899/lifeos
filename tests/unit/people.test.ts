@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeMentionQuery, daysUntilAnnual, lunarDayName, nextAnnualDate, parseMentions, personContacts, prettyLunarDay, prettyMonthDay, relatedDays, sanitizeAnniversaries, sanitizeContacts, solarToLunar } from '../../src/lib/people';
+import { activeMentionQuery, daysUntilAnnual, lunarDayName, nextAnnualDate, parseMentions, personContacts, prettyLunarDay, prettyMonthDay, relatedDays, sanitizeAnniversaries, sanitizeContacts, solarToLunar, sortContacts } from '../../src/lib/people';
 import { buildExport, validateExportFile } from '../../src/lib/exporter';
 import { emptyDay, type LifeEvent, type Person } from '../../src/lib/types';
 
@@ -83,13 +83,13 @@ describe('自定义联系方式条目（v0.4.1）', () => {
     expect(sanitizeContacts([])).toBeUndefined();
     expect(sanitizeContacts(undefined)).toBeUndefined();
   });
-  it('旧固定字段折算成条目，顺序稳定', () => {
+  it('旧固定字段折算成条目，顺序稳定（v0.4.3 起按固定展示顺序：邮箱在 Instagram 前）', () => {
     const p = { ...P('张三'), phone: '138', wechat: 'wx', instagram: 'ins', email: 'a@b.co', org: '某公司' };
     expect(personContacts(p)).toEqual([
       { label: '手机', value: '138' },
       { label: '微信', value: 'wx' },
-      { label: 'Instagram', value: 'ins' },
       { label: '邮箱', value: 'a@b.co' },
+      { label: 'Instagram', value: 'ins' },
       { label: '单位', value: '某公司' },
     ]);
   });
@@ -132,6 +132,37 @@ describe('农历生日（v0.4.2）', () => {
       .toEqual([{ label: '认识', date: '2023-11-19', lunar: true }]);
     expect(sanitizeAnniversaries([{ label: '认识', date: '2023-11-19' }]))
       .toEqual([{ label: '认识', date: '2023-11-19' }]);
+  });
+});
+
+describe('联系方式固定排序（v0.4.3）', () => {
+  it('不随添加顺序变：手机 → 微信 → 抖音', () => {
+    const input = [
+      { label: '抖音', value: 'a' },
+      { label: '微信', value: 'b' },
+      { label: '手机', value: 'c' },
+    ];
+    expect(sortContacts(input).map((x) => x.label)).toEqual(['手机', '微信', '抖音']);
+    // 另一种添加顺序，结果一致
+    const input2 = [
+      { label: '手机', value: 'c' },
+      { label: '抖音', value: 'a' },
+      { label: '微信', value: 'b' },
+    ];
+    expect(sortContacts(input2).map((x) => x.label)).toEqual(['手机', '微信', '抖音']);
+  });
+  it('自定义名称排在已知名称后、保持原相对顺序；同名保持原序', () => {
+    const input = [
+      { label: '飞书', value: '1' },
+      { label: '手机', value: '2' },
+      { label: '小号', value: '3' },
+      { label: '手机', value: '4' },
+    ];
+    expect(sortContacts(input).map((x) => x.value)).toEqual(['2', '4', '1', '3']);
+  });
+  it('personContacts 对存量条目也排序', () => {
+    const p = { id: 'x', name: '张三', relation: '朋友', contacts: [{ label: '抖音', value: 'd' }, { label: '手机', value: 'm' }] } as Person;
+    expect(personContacts(p).map((x) => x.label)).toEqual(['手机', '抖音']);
   });
 });
 

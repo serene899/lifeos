@@ -20,11 +20,29 @@ export function sanitizeContacts(list: { label: string; value: string }[] | unde
 }
 
 /**
+ * 联系方式的固定展示顺序（v0.4.3，所有者要求）：像苹果通讯录一样位置定死，
+ * 不管添加时先填了谁，呈现顺序永远一致。表外的自定义名称排在后面、保持原相对顺序。
+ */
+export const CONTACT_ORDER = ['手机', '电话', '微信', 'QQ', '邮箱', '抖音', '小红书', 'Instagram', 'WhatsApp', 'X', '微博', '单位', '住址'];
+
+export function sortContacts<T extends { label: string }>(entries: T[]): T[] {
+  const rank = (label: string) => {
+    const i = CONTACT_ORDER.indexOf(label.trim());
+    return i === -1 ? CONTACT_ORDER.length : i;
+  };
+  return entries
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => rank(a.e.label) - rank(b.e.label) || a.i - b.i)
+    .map((x) => x.e);
+}
+
+/**
  * 一个人的全部联系方式条目：优先用 v0.4.1 的自定义条目 contacts；
- * 没有时把 v0.3.1 的旧固定字段折算成条目（顺序：手机/微信/抖音/INS/WhatsApp/邮箱/单位/住址），旧数据不丢。
+ * 没有时把 v0.3.1 的旧固定字段折算成条目。旧数据不丢。
+ * 返回前统一按 CONTACT_ORDER 排序（v0.4.3），展示与导出顺序不随添加顺序变。
  */
 export function personContacts(p: Person): { label: string; value: string }[] {
-  if (p.contacts && p.contacts.length) return p.contacts;
+  if (p.contacts && p.contacts.length) return sortContacts(p.contacts);
   const out: { label: string; value: string }[] = [];
   if (p.phone) out.push({ label: '手机', value: p.phone });
   if (p.wechat) out.push({ label: '微信', value: p.wechat });
@@ -34,7 +52,7 @@ export function personContacts(p: Person): { label: string; value: string }[] {
   if (p.email) out.push({ label: '邮箱', value: p.email });
   if (p.org) out.push({ label: '单位', value: p.org });
   if (p.address) out.push({ label: '住址', value: p.address });
-  return out;
+  return sortContacts(out);
 }
 
 /** 清洗纪念日列表：去掉空行、修剪空白（纯函数，供 repo 保存前调用）。 */

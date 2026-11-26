@@ -118,8 +118,10 @@ export default function Data({ goRecord, onBack }: { goRecord: (date: string) =>
 
   return (
     <div className="space-y-4">
+      <div className="sticky-head -mx-4 px-4 py-1.5">
+        <button className="text-[#007aff] text-sm" onClick={onBack} data-testid="back-home">‹ 返回首页</button>
+      </div>
       <header>
-        <button className="text-[#007aff] text-sm -ml-1 mb-1" onClick={onBack} data-testid="back-home">‹ 返回首页</button>
         <h1 className="text-[22px] font-bold tracking-tight">设置 · 数据</h1>
         <p className="muted text-sm mt-1">数据只存在这台设备的浏览器本地（IndexedDB），没有服务器。导出备份是你自己的责任，也是唯一的恢复手段。</p>
       </header>

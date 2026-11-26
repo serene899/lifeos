@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { deletePerson, savePerson, setAvatar } from '../lib/repo';
 import { fileToAvatarDataUrl } from '../lib/avatar';
-import { daysUntilAnnual, nextAnnualDate, parseMentions, personContacts, prettyLunarDay, prettyMonthDay, relatedDays, type RelatedDay } from '../lib/people';
+import { daysUntilAnnual, nextAnnualDate, parseMentions, personContacts, prettyLunarDay, prettyMonthDay, relatedDays, sortContacts, type RelatedDay } from '../lib/people';
 import { todayKey } from '../lib/time';
 import { RELATION_PRESETS, type Person } from '../lib/types';
 
@@ -101,10 +101,11 @@ export default function People({ goRecord }: { goRecord: (date: string) => void 
   if (selected) {
     // v0.4.1：联系方式改为自定义条目（旧固定字段经 personContacts 折算，展示与数据都不丢）
     const contactRows: { label: string; value: string; href?: string; hint?: string }[] = personContacts(selected).map((c) => {
-      if (/手机|电话/.test(c.label) || /^\+?[\d\s\-()]{7,}$/.test(c.value)) {
+      // v0.4.3：拨打只认名称是手机/电话的条目——纯数字的抖音号等不再被误判成电话号码
+      if (/手机|电话/.test(c.label)) {
         return { label: c.label, value: c.value, href: `tel:${c.value.replace(/[\s\-()]/g, '')}`, hint: '拨打 ›' };
       }
-      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.value)) {
+      if (/邮箱|邮件/.test(c.label) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.value)) {
         return { label: c.label, value: c.value, href: `mailto:${c.value}`, hint: '写邮件 ›' };
       }
       return { label: c.label, value: c.value };
@@ -112,7 +113,7 @@ export default function People({ goRecord }: { goRecord: (date: string) => void 
     const dayCount = new Set(relDays.map((r) => r.date)).size;
     return (
       <div className="space-y-5">
-        <div className="flex items-center justify-between">
+        <div className="sticky-head -mx-4 px-4 py-2 flex items-center justify-between" data-testid="person-detail-head">
           <button className="round-btn" onClick={() => setSelectedId(null)} aria-label="全部人物">‹</button>
           <button className="btn-ghost !rounded-full" onClick={() => setEditing(selected)} data-testid="person-edit">编辑</button>
         </div>
@@ -194,7 +195,7 @@ export default function People({ goRecord }: { goRecord: (date: string) => void 
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between">
+      <header className="sticky-head -mx-4 px-4 py-2 flex items-center justify-between">
         <h1 className="text-[22px] font-bold tracking-tight">人物</h1>
         <button className="round-btn" onClick={() => setEditing('new')} data-testid="add-person" aria-label="添加一个人">＋</button>
       </header>
@@ -293,7 +294,7 @@ function PersonForm({ initial, onCancel, onSaved }: {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="sticky-head -mx-4 px-4 py-2 flex items-center justify-between">
         <button className="round-btn" onClick={onCancel} aria-label="取消">✕</button>
         <span className="font-semibold">{initial ? '编辑联系人' : '添加一个人'}</span>
         <button className="round-btn !text-[#007aff] font-bold" onClick={onSave} data-testid="person-save" aria-label="保存">✓</button>
@@ -333,16 +334,16 @@ function PersonForm({ initial, onCancel, onSaved }: {
       <section className="group">
         {entries.map((c, i) => (
           <div key={i} className="grow flex items-center gap-2.5">
-            <button type="button" aria-label="删除这一项" className="w-6 h-6 rounded-full bg-[#ff3b30] text-white shrink-0 flex items-center justify-center text-[16px] leading-none pb-0.5" onClick={() => setEntries(entries.filter((_, j) => j !== i))}>−</button>
+            <button type="button" aria-label="删除这一项" className="w-6 h-6 rounded-full bg-[#ff3b30] text-white shrink-0 flex items-center justify-center text-[16px] leading-none pb-0.5" onClick={() => setEntries(sortContacts(entries.filter((_, j) => j !== i)))}>−</button>
             <input className="input-plain !w-[84px] shrink-0 !text-[#007aff]" value={c.label} onChange={(e) => setEntries(entries.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} placeholder="名称" data-testid={`contact-label-${i}`} />
             <input className="input-plain flex-1" value={c.value} onChange={(e) => setEntries(entries.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} placeholder="账号 / 号码 / 地址" data-testid={`contact-value-${i}`} />
           </div>
         ))}
-        <button type="button" className="grow w-full text-left text-[#007aff] text-[15px]" onClick={() => setEntries([...entries, { label: '', value: '' }])} data-testid="add-contact">＋ 添加一项（名称自己起）</button>
+        <button type="button" className="grow w-full text-left text-[#007aff] text-[15px]" onClick={() => setEntries(sortContacts([...entries, { label: '', value: '' }]))} data-testid="add-contact">＋ 添加一项（名称自己起）</button>
         <div className="grow flex flex-wrap gap-1.5 items-center">
           <span className="text-[13px] muted mr-0.5">常用：</span>
           {['手机', '微信', 'QQ', '邮箱', '抖音', 'Instagram', 'WhatsApp', 'X', '小红书'].map((l) => (
-            <button key={l} type="button" className="chip" onClick={() => setEntries([...entries, { label: l, value: '' }])}>{l}</button>
+            <button key={l} type="button" className="chip" onClick={() => setEntries(sortContacts([...entries, { label: l, value: '' }]))}>{l}</button>
           ))}
         </div>
         <p className="grow text-xs muted">联系方式想记什么就加什么、名称自己起，不用把每个平台都填一遍。手机号填了之后，详情页能点一下直接拨打。</p>

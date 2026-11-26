@@ -122,10 +122,13 @@ test('通讯录 + 故事 @ 提及：加人 → 写故事选人 → 人物页看�
   await page.getByTestId('avatar-file').setInputFiles({ name: 'a.png', mimeType: 'image/png', buffer: png });
   await expect(page.getByTestId('person-avatar')).toHaveJSProperty('tagName', 'IMG');
   await page.getByTestId('person-more-toggle').click();
-  // v0.4.1：联系方式是自定义条目——点「添加一项」，名称自己起、内容自己填
+  // v0.4.1：联系方式是自定义条目——名称自己起、内容自己填
+  // v0.4.3：故意先加抖音（纯数字号）、后加手机，验证展示顺序会被固定排序纠正
+  await page.getByRole('button', { name: '抖音', exact: true }).click();
+  await page.getByTestId('contact-value-0').fill('123456789');
   await page.getByTestId('add-contact').click();
-  await page.getByTestId('contact-label-0').fill('手机');
-  await page.getByTestId('contact-value-0').fill('13800000000');
+  await page.getByTestId('contact-label-1').fill('手机');
+  await page.getByTestId('contact-value-1').fill('13800000000');
   await page.getByTestId('person-birthday').fill('1995-11-25');
   // v0.4.2：这个生日按农历记（1995-11-25 的月/日按农历十一月廿五解释）
   await page.getByTestId('birthday-cal-lunar').click();
@@ -135,6 +138,13 @@ test('通讯录 + 故事 @ 提及：加人 → 写故事选人 → 人物页看�
   await expect(page.getByTestId('person-avatar')).toHaveJSProperty('tagName', 'IMG');
   await expect(page.getByText('还没有哪天的记录提到 TA')).toBeVisible();
   await expect(page.getByTestId('contact-info')).toContainText('13800000000');
+  // v0.4.3：展示顺序固定（手机在抖音前），纯数字抖音号不再被误判出「拨打」（全页只有手机那一处）
+  const ctext = await page.getByTestId('contact-info').textContent();
+  expect(ctext!.indexOf('手机')).toBeGreaterThanOrEqual(0);
+  expect(ctext!.indexOf('手机')).toBeLessThan(ctext!.indexOf('抖音'));
+  await expect(page.getByTestId('contact-info').getByText('拨打 ›')).toHaveCount(1);
+  // v0.4.3：详情页顶部返回/编辑栏吸顶固定
+  await expect.poll(async () => page.getByTestId('person-detail-head').evaluate((el) => getComputedStyle(el).position)).toBe('sticky');
   await expect(page.getByTestId('important-days')).toContainText('农历冬月廿五');
   await expect(page.getByTestId('important-days')).toContainText('今年阳历');
   // 首页记录：写故事，打 @ 弹出选人条，点选插入

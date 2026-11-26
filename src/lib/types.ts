@@ -3,7 +3,7 @@
  * 规格依据：V0.3.3 终审规格（所有者 2026-11-19 下达的 12 条规则）。
  * 核心定位：记录真实人生，而不是评判人生。
  */
-export const APP_VERSION = '0.4.2';
+export const APP_VERSION = '0.4.3';
 export const EXPORT_FORMAT = 'lifeos-export-v1' as const;
 
 /** 六个维度，且只有六个。关系与生活事件不是维度，只进时间轴（规则 2、3）。 */

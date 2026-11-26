@@ -75,6 +75,15 @@ textarea.input { min-height: 64px; resize: vertical; }
 }
 .seg-on { background: #007aff; color: #fff; font-weight: 700; }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+/* 二级页顶部栏吸顶（v0.4.3，所有者要求）：返回/编辑/保存按钮图层最高，页面滚下去也始终点得到 */
+.sticky-head {
+  position: sticky;
+  top: env(safe-area-inset-top);
+  z-index: 30;
+  background: rgb(var(--c-bg) / 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
 /* 苹果通讯录式分组列表：一张大圆角卡 + 行间细分隔线，标签小字在上、值在下 */
 .group {
   background: rgb(var(--c-card));
