@@ -38,25 +38,93 @@ export function personContacts(p: Person): { label: string; value: string }[] {
 }
 
 /** 清洗纪念日列表：去掉空行、修剪空白（纯函数，供 repo 保存前调用）。 */
-export function sanitizeAnniversaries(list: { label: string; date: string }[] | undefined): { label: string; date: string }[] | undefined {
+export function sanitizeAnniversaries(list: { label: string; date: string; lunar?: boolean }[] | undefined): { label: string; date: string; lunar?: boolean }[] | undefined {
   const out = (list ?? [])
-    .map((a) => ({ label: a.label.trim(), date: a.date.trim() }))
+    .map((a) => ({ label: a.label.trim(), date: a.date.trim(), ...(a.lunar ? { lunar: true } : {}) }))
     .filter((a) => a.label && /^\d{4}-\d{2}-\d{2}$/.test(a.date));
   return out.length ? out : undefined;
 }
 
+/* ---------- 农历（v0.4.2，所有者要求）：用系统自带 Intl 中国农历换算，不引第三方历表 ---------- */
+
+let lunarFmt: Intl.DateTimeFormat | null | undefined;
+const lunarCache = new Map<string, { month: number; day: number; leap: boolean } | null>();
+
+/** 阳历日期 → 农历 {月, 日, 是否闰月}。环境不支持中国农历时返回 null，调用方回退阳历口径。 */
+export function solarToLunar(d: Date): { month: number; day: number; leap: boolean } | null {
+  if (lunarFmt === undefined) {
+    try { lunarFmt = new Intl.DateTimeFormat('en-u-ca-chinese', { month: 'numeric', day: 'numeric' }); }
+    catch { lunarFmt = null; }
+  }
+  if (!lunarFmt) return null;
+  const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  const hit = lunarCache.get(key);
+  if (hit !== undefined) return hit;
+  let out: { month: number; day: number; leap: boolean } | null = null;
+  try {
+    const parts = lunarFmt.formatToParts(d);
+    const mv = parts.find((p) => p.type === 'month')?.value ?? '';
+    const month = parseInt(mv, 10);
+    const day = Number(parts.find((p) => p.type === 'day')?.value);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 30) out = { month, day, leap: mv.includes('bis') };
+  } catch { out = null; }
+  lunarCache.set(key, out);
+  return out;
+}
+
+export const LUNAR_MONTH_NAMES = ['正月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '冬月', '腊月'];
+const LUNAR_DIGITS = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+
+export function lunarDayName(day: number): string {
+  if (day < 10) return `初${LUNAR_DIGITS[day]}`;
+  if (day === 10) return '初十';
+  if (day < 20) return `十${LUNAR_DIGITS[day - 10]}`;
+  if (day === 20) return '二十';
+  if (day < 30) return `廿${LUNAR_DIGITS[day - 20]}`;
+  return '三十';
+}
+
+/** 「腊月十五」式展示 */
+export function prettyLunarDay(month: number, day: number): string {
+  return `${LUNAR_MONTH_NAMES[month - 1] ?? `${month}月`}${lunarDayName(day)}`;
+}
+
+function localKey(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /**
- * 离下一次「月日纪念」（生日/纪念日）还有多少天：0=今天。
- * 入参接受 YYYY-MM-DD 或 MM-DD；2 月 29 日在平年按 3 月 1 日算（Date 自动顺延）。
+ * 下一次「月日纪念」落在哪个阳历日期（YYYY-MM-DD）。
+ * lunar=true 时 dateStr 的月/日按农历解释：逐日往后找农历月日相同的一天（闰月年份取正月那次；
+ * 农历三十遇到只有廿九的小月则顺延到下一年）。lunar=false 时与旧口径一致（2/29 平年按 3/1）。
  */
-export function daysUntilAnnual(dateStr: string, today: string = todayKey()): number | null {
+export function nextAnnualDate(dateStr: string, today: string = todayKey(), lunar = false): string | null {
   const m = /(?:^\d{4}-)?(\d{2})-(\d{2})$/.exec(dateStr.trim());
   if (!m) return null;
-  const [, mm, dd] = m;
-  const year = Number(today.slice(0, 4));
-  const cand = `${year}-${mm}-${dd}`;
-  const target = cand >= today ? cand : `${year + 1}-${mm}-${dd}`;
-  // 2/29 在平年会落到不存在的日期键：用 daysBetween 的本地日期解析（自动顺延到 3/1）兜底
+  if (!lunar) {
+    const year = Number(today.slice(0, 4));
+    const cand = `${year}-${m[1]}-${m[2]}`;
+    return cand >= today ? cand : `${year + 1}-${m[1]}-${m[2]}`;
+  }
+  const month = Number(m[1]);
+  const day = Number(m[2]);
+  const [ty, tm, td] = today.split('-').map(Number);
+  for (let i = 0; i < 400; i++) {
+    const d = new Date(ty, tm - 1, td + i, 12);
+    const l = solarToLunar(d);
+    if (l && !l.leap && l.month === month && l.day === day) return localKey(d);
+  }
+  return null;
+}
+
+/**
+ * 离下一次「月日纪念」（生日/纪念日）还有多少天：0=今天。
+ * 入参接受 YYYY-MM-DD 或 MM-DD；lunar=true 时月/日按农历算。
+ */
+export function daysUntilAnnual(dateStr: string, today: string = todayKey(), lunar = false): number | null {
+  const target = nextAnnualDate(dateStr, today, lunar);
+  if (!target) return null;
   const diff = daysBetween(today, target);
   return Number.isFinite(diff) ? diff : null;
 }

@@ -10,7 +10,7 @@
 import { canonicalize, sha256Hex } from './canonical';
 import { APP_VERSION, DIM_KEYS, DIM_LABEL, FACT_KEYS, type DayRecord, type LifeEvent, type Person } from './types';
 import { deviceTz, nowUtc } from './time';
-import { personContacts } from './people';
+import { personContacts, prettyLunarDay } from './people';
 
 export interface ExportFile {
   format: 'lifeos-export-v1';
@@ -198,8 +198,17 @@ export function buildMarkdown(days: DayRecord[], events: LifeEvent[], people: Pe
     for (const p of [...people].sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const extra: string[] = [];
       for (const c of personContacts(p)) extra.push(`${c.label} ${c.value}`);
-      if (p.birthday) extra.push(`生日 ${p.birthday}`);
-      if (p.anniversaries?.length) extra.push(p.anniversaries.map((a) => `${a.label} ${a.date}`).join('；'));
+      if (p.birthday) {
+        if (p.birthdayLunar) {
+          const [, mm, dd] = p.birthday.split('-').map(Number);
+          extra.push(`生日 农历${prettyLunarDay(mm, dd)}`);
+        } else extra.push(`生日 ${p.birthday}`);
+      }
+      if (p.anniversaries?.length) extra.push(p.anniversaries.map((a) => {
+        if (!a.lunar) return `${a.label} ${a.date}`;
+        const [, mm, dd] = a.date.split('-').map(Number);
+        return `${a.label} 农历${prettyLunarDay(mm, dd)}`;
+      }).join('；'));
       lines.push(`- ${p.name}（${p.relation || '未填关系'}）${p.note ? `：${p.note}` : ''}${extra.length ? `｜${extra.join(' · ')}` : ''}`);
     }
   }

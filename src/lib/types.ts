@@ -3,7 +3,7 @@
  * 规格依据：V0.3.3 终审规格（所有者 2026-11-19 下达的 12 条规则）。
  * 核心定位：记录真实人生，而不是评判人生。
  */
-export const APP_VERSION = '0.4.1';
+export const APP_VERSION = '0.4.2';
 export const EXPORT_FORMAT = 'lifeos-export-v1' as const;
 
 /** 六个维度，且只有六个。关系与生活事件不是维度，只进时间轴（规则 2、3）。 */
@@ -116,8 +116,10 @@ export interface Person {
   email?: string;
   /** 生日 YYYY-MM-DD（年份只作记录，临近天数按月日算） */
   birthday?: string;
-  /** 两人之间的纪念日，可多条，如「第一次一起吃饭」 */
-  anniversaries?: { label: string; date: string }[];
+  /** 生日按农历记（v0.4.2）：true 时 birthday 的月/日是农历月日，年份为农历出生年 */
+  birthdayLunar?: boolean;
+  /** 两人之间的纪念日，可多条，如「第一次一起吃饭」；lunar=true 时 date 的月/日按农历算 */
+  anniversaries?: { label: string; date: string; lunar?: boolean }[];
   address?: string;
   /** 公司 / 学校等（自由文本） */
   org?: string;

@@ -127,13 +127,16 @@ test('通讯录 + 故事 @ 提及：加人 → 写故事选人 → 人物页看�
   await page.getByTestId('contact-label-0').fill('手机');
   await page.getByTestId('contact-value-0').fill('13800000000');
   await page.getByTestId('person-birthday').fill('1995-11-25');
+  // v0.4.2：这个生日按农历记（1995-11-25 的月/日按农历十一月廿五解释）
+  await page.getByTestId('birthday-cal-lunar').click();
   await page.getByTestId('person-save').click();
   // 保存后进入这个人的详情页（还没被任何记录提到），头像、联系方式与生日都在
   await expect(page.getByRole('heading', { name: '张三' })).toBeVisible();
   await expect(page.getByTestId('person-avatar')).toHaveJSProperty('tagName', 'IMG');
   await expect(page.getByText('还没有哪天的记录提到 TA')).toBeVisible();
   await expect(page.getByTestId('contact-info')).toContainText('13800000000');
-  await expect(page.getByTestId('important-days')).toContainText('11月25日');
+  await expect(page.getByTestId('important-days')).toContainText('农历冬月廿五');
+  await expect(page.getByTestId('important-days')).toContainText('今年阳历');
   // 首页记录：写故事，打 @ 弹出选人条，点选插入
   await page.getByTestId('tab-home').click();
   await page.getByTestId('record-today').click();

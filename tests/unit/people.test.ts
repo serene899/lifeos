@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeMentionQuery, daysUntilAnnual, parseMentions, personContacts, prettyMonthDay, relatedDays, sanitizeAnniversaries, sanitizeContacts } from '../../src/lib/people';
+import { activeMentionQuery, daysUntilAnnual, lunarDayName, nextAnnualDate, parseMentions, personContacts, prettyLunarDay, prettyMonthDay, relatedDays, sanitizeAnniversaries, sanitizeContacts, solarToLunar } from '../../src/lib/people';
 import { buildExport, validateExportFile } from '../../src/lib/exporter';
 import { emptyDay, type LifeEvent, type Person } from '../../src/lib/types';
 
@@ -96,6 +96,42 @@ describe('自定义联系方式条目（v0.4.1）', () => {
   it('有 contacts 时以 contacts 为准，不再读旧字段', () => {
     const p = { ...P('张三'), phone: '138', contacts: [{ label: 'QQ', value: '12345' }] };
     expect(personContacts(p)).toEqual([{ label: 'QQ', value: '12345' }]);
+  });
+});
+
+describe('农历生日（v0.4.2）', () => {
+  it('阳历转农历：已知锚点（含闰月）', () => {
+    expect(solarToLunar(new Date(2005, 0, 24, 12))).toEqual({ month: 12, day: 15, leap: false });
+    expect(solarToLunar(new Date(2025, 0, 29, 12))).toEqual({ month: 1, day: 1, leap: false });
+    expect(solarToLunar(new Date(2023, 2, 22, 12))).toEqual({ month: 2, day: 1, leap: true });
+    expect(solarToLunar(new Date(2026, 1, 17, 12))).toEqual({ month: 1, day: 1, leap: false });
+  });
+  it('农历日名与展示', () => {
+    expect(lunarDayName(1)).toBe('初一');
+    expect(lunarDayName(10)).toBe('初十');
+    expect(lunarDayName(15)).toBe('十五');
+    expect(lunarDayName(20)).toBe('二十');
+    expect(lunarDayName(21)).toBe('廿一');
+    expect(lunarDayName(30)).toBe('三十');
+    expect(prettyLunarDay(12, 15)).toBe('腊月十五');
+    expect(prettyLunarDay(11, 25)).toBe('冬月廿五');
+    expect(prettyLunarDay(1, 1)).toBe('正月初一');
+  });
+  it('农历下一次日期与倒计天', () => {
+    // 2005-01-24 阳历 = 农历腊月十五（锚点）
+    expect(nextAnnualDate('2004-12-15', '2005-01-20', true)).toBe('2005-01-24');
+    expect(daysUntilAnnual('2004-12-15', '2005-01-20', true)).toBe(4);
+    expect(daysUntilAnnual('2004-12-15', '2005-01-24', true)).toBe(0);
+    // 2026-02-17 是正月初一（春节锚点）
+    expect(daysUntilAnnual('2000-01-01', '2026-02-16', true)).toBe(1);
+    // 闰二月年份取正二月：2023 正二月初一 = 阳历 2023-02-20，而不是闰二月初一 03-22
+    expect(nextAnnualDate('2000-02-01', '2023-02-19', true)).toBe('2023-02-20');
+  });
+  it('纪念日清洗保留农历标记', () => {
+    expect(sanitizeAnniversaries([{ label: ' 认识 ', date: '2023-11-19', lunar: true }]))
+      .toEqual([{ label: '认识', date: '2023-11-19', lunar: true }]);
+    expect(sanitizeAnniversaries([{ label: '认识', date: '2023-11-19' }]))
+      .toEqual([{ label: '认识', date: '2023-11-19' }]);
   });
 });
 

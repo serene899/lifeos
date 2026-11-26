@@ -61,7 +61,7 @@ export async function allPeople(): Promise<Person[]> {
 export async function savePerson(input: {
   id?: string; name: string; relation: string; note?: string; synthetic?: boolean;
   phone?: string; wechat?: string; douyin?: string; instagram?: string; whatsapp?: string; email?: string;
-  birthday?: string; anniversaries?: { label: string; date: string }[]; address?: string; org?: string;
+  birthday?: string; birthdayLunar?: boolean; anniversaries?: { label: string; date: string; lunar?: boolean }[]; address?: string; org?: string;
   contacts?: { label: string; value: string }[];
 }): Promise<Person> {
   const now = nowUtc();
@@ -79,6 +79,7 @@ export async function savePerson(input: {
     whatsapp: clean(input.whatsapp),
     email: clean(input.email),
     birthday: clean(input.birthday),
+    birthdayLunar: input.birthday && input.birthdayLunar ? true : undefined,
     anniversaries: sanitizeAnniversaries(input.anniversaries),
     address: clean(input.address),
     org: clean(input.org),

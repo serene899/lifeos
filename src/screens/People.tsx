@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { deletePerson, savePerson, setAvatar } from '../lib/repo';
 import { fileToAvatarDataUrl } from '../lib/avatar';
-import { daysUntilAnnual, parseMentions, personContacts, prettyMonthDay, relatedDays, type RelatedDay } from '../lib/people';
+import { daysUntilAnnual, nextAnnualDate, parseMentions, personContacts, prettyLunarDay, prettyMonthDay, relatedDays, type RelatedDay } from '../lib/people';
+import { todayKey } from '../lib/time';
 import { RELATION_PRESETS, type Person } from '../lib/types';
 
 const FROM_LABEL: Record<RelatedDay['from'], string> = {
@@ -21,6 +22,31 @@ function Avatar({ name, url, size }: { name: string; url?: string; size: number 
   return (
     <span className="rounded-full shrink-0 flex items-center justify-center font-medium select-none" style={{ width: size, height: size, background: 'rgb(var(--c-ink) / 0.12)', color: 'rgb(var(--c-ink) / 0.55)', fontSize: Math.round(size * 0.42) }} data-testid="person-avatar">
       {name.trim().charAt(0) || '?'}
+    </span>
+  );
+}
+
+/** 纪念日期展示：阳历「11月25日」/ 农历「农历腊月十五」 */
+function annualLabel(dateStr: string, lunar?: boolean): string {
+  if (!lunar) return prettyMonthDay(dateStr);
+  const [, mm, dd] = dateStr.split('-').map(Number);
+  return `农历${prettyLunarDay(mm, dd)}`;
+}
+
+/** 农历纪念补一句今年落在哪个阳历日期 */
+function annualSuffix(dateStr: string, lunar?: boolean): string {
+  if (!lunar) return '';
+  const next = nextAnnualDate(dateStr, todayKey(), true);
+  return next ? ` · 今年阳历 ${prettyMonthDay(next)}` : '';
+}
+
+/** 公历/农历小切换（苹果分段控件样式） */
+function CalToggle({ lunar, onChange, testPrefix }: { lunar: boolean; onChange: (v: boolean) => void; testPrefix: string }) {
+  const activeStyle = { background: 'rgb(var(--c-card))', boxShadow: '0 1px 3px rgb(0 0 0 / 0.18)' } as const;
+  return (
+    <span className="inline-flex rounded-full p-0.5 gap-0.5 shrink-0" style={{ background: 'rgb(var(--c-ink) / 0.07)' }}>
+      <button type="button" data-testid={`${testPrefix}-solar`} className={`px-2.5 py-1 rounded-full text-[13px] ${lunar ? 'muted' : 'font-semibold'}`} style={!lunar ? activeStyle : undefined} onClick={() => onChange(false)}>公历</button>
+      <button type="button" data-testid={`${testPrefix}-lunar`} className={`px-2.5 py-1 rounded-full text-[13px] ${lunar ? 'font-semibold' : 'muted'}`} style={lunar ? activeStyle : undefined} onClick={() => onChange(true)}>农历</button>
     </span>
   );
 }
@@ -137,20 +163,21 @@ export default function People({ goRecord }: { goRecord: (date: string) => void 
         {(selected.birthday || (selected.anniversaries && selected.anniversaries.length > 0)) && (
           <section className="group" data-testid="important-days">
             {selected.birthday && (() => {
-              const d = daysUntilAnnual(selected.birthday);
+              const lunar = !!selected.birthdayLunar;
+              const d = daysUntilAnnual(selected.birthday, todayKey(), lunar);
               return (
                 <div className="grow">
-                  <p className="glabel">🎂 生日</p>
-                  <p className="gvalue">{prettyMonthDay(selected.birthday)}{d !== null && <span className="text-[#007aff] font-medium"> · {d === 0 ? '就是今天！' : `还有 ${d} 天`}</span>}</p>
+                  <p className="glabel">🎂 生日{lunar ? '（农历）' : ''}</p>
+                  <p className="gvalue">{annualLabel(selected.birthday, lunar)}<span className="muted text-sm">{annualSuffix(selected.birthday, lunar)}</span>{d !== null && <span className="text-[#007aff] font-medium"> · {d === 0 ? '就是今天！' : `还有 ${d} 天`}</span>}</p>
                 </div>
               );
             })()}
             {(selected.anniversaries ?? []).map((a, i) => {
-              const d = daysUntilAnnual(a.date);
+              const d = daysUntilAnnual(a.date, todayKey(), !!a.lunar);
               return (
                 <div key={i} className="grow">
-                  <p className="glabel">✦ {a.label}</p>
-                  <p className="gvalue">{prettyMonthDay(a.date)}{d !== null && <span className="text-[#007aff] font-medium"> · {d === 0 ? '就是今天！' : `还有 ${d} 天`}</span>}</p>
+                  <p className="glabel">✦ {a.label}{a.lunar ? '（农历）' : ''}</p>
+                  <p className="gvalue">{annualLabel(a.date, a.lunar)}<span className="muted text-sm">{annualSuffix(a.date, a.lunar)}</span>{d !== null && <span className="text-[#007aff] font-medium"> · {d === 0 ? '就是今天！' : `还有 ${d} 天`}</span>}</p>
                 </div>
               );
             })}
@@ -188,7 +215,7 @@ export default function People({ goRecord }: { goRecord: (date: string) => void 
           {visible.map((p) => {
             const rel = relatedDays(p, days ?? [], events ?? []);
             const dayCount = new Set(rel.map((r) => r.date)).size;
-            const bday = p.birthday ? daysUntilAnnual(p.birthday) : null;
+            const bday = p.birthday ? daysUntilAnnual(p.birthday, todayKey(), !!p.birthdayLunar) : null;
             return (
               <button key={p.id} className="grow w-full text-left block" onClick={() => setSelectedId(p.id)} data-testid={`person-${p.name}`}>
                 <span className="flex items-center gap-3">
@@ -225,7 +252,8 @@ function PersonForm({ initial, onCancel, onSaved }: {
   // v0.4.1：联系方式改为自定义条目（名称+内容自由增删）；旧固定字段打开编辑时自动折算成条目
   const [entries, setEntries] = useState<{ label: string; value: string }[]>(() => (initial ? personContacts(initial) : []));
   const [birthday, setBirthday] = useState(initial?.birthday ?? '');
-  const [annivs, setAnnivs] = useState<{ label: string; date: string }[]>(initial?.anniversaries ?? []);
+  const [birthdayLunar, setBirthdayLunar] = useState(initial?.birthdayLunar ?? false);
+  const [annivs, setAnnivs] = useState<{ label: string; date: string; lunar?: boolean }[]>(initial?.anniversaries ?? []);
   // v0.4.0：联系方式/重要日子收进折叠区，表单先只突出姓名、关系、备注；已有值时默认展开，不丢数据
   const [moreOpen, setMoreOpen] = useState<boolean>(() => !!initial && !!(
     (initial.contacts && initial.contacts.length > 0) ||
@@ -250,7 +278,7 @@ function PersonForm({ initial, onCancel, onSaved }: {
     const p = await savePerson({
       id: initial?.id, name, relation, note,
       contacts: entries,
-      birthday, anniversaries: annivs,
+      birthday, birthdayLunar, anniversaries: annivs,
     });
     if (avatarDraft !== undefined) await setAvatar(p.id, avatarDraft ?? undefined);
     onSaved(p);
@@ -321,12 +349,24 @@ function PersonForm({ initial, onCancel, onSaved }: {
       </section>
 
       <section className="group">
-        <label className="grow block">
-          <span className="glabel">🎂 TA 的生日</span>
+        <div className="grow">
+          <div className="flex items-center justify-between gap-2">
+            <span className="glabel">🎂 TA 的生日</span>
+            <CalToggle lunar={birthdayLunar} onChange={setBirthdayLunar} testPrefix="birthday-cal" />
+          </div>
           <input type="date" className="input-plain" value={birthday} onChange={(e) => setBirthday(e.target.value)} data-testid="person-birthday" />
-        </label>
+          <p className="text-xs muted mt-1 leading-relaxed">
+            {birthdayLunar
+              ? <>按农历记：月、日照农历选（比如腊月十五，就选 12 月 15 日，年份填出生那年）。{birthday ? <>现在记的是 <span className="text-[#007aff]">农历{prettyLunarDay(Number(birthday.split('-')[1]), Number(birthday.split('-')[2]))}</span>，详情页会自动算出今年的阳历日期。</> : null}</>
+              : '按阳历（公历）记。TA 要是过农历生日，切到「农历」就行。'}
+          </p>
+        </div>
         {annivs.map((a, i) => (
           <div key={i}>
+            <div className="grow flex items-center justify-between gap-2">
+              <span className="glabel">纪念日</span>
+              <CalToggle lunar={!!a.lunar} onChange={(v) => setAnnivs(annivs.map((x, j) => (j === i ? { ...x, lunar: v || undefined } : x)))} testPrefix={`anniv-cal-${i}`} />
+            </div>
             <label className="grow block">
               <span className="glabel">纪念日名称</span>
               <input className="input-plain" value={a.label} onChange={(e) => setAnnivs(annivs.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} placeholder="比如：第一次一起吃饭" />
